@@ -57,7 +57,7 @@ oly_ai.show_assist_dialog = function (frm, feature, custom_prompt) {
 		.then((r) => {
 			d._ai_content = r.content;
 			const meta_html = `<div class="ai-meta text-muted small mb-2">
-				${r.cached ? "⚡ Cached" : `<svg class="es-icon icon-xs"><use href="#es-line-sparkle"></use></svg> ${r.model}`}
+				${r.cached ? "⚡ Cached" : `<svg class="es-icon icon-xs"><use href="#es-line-star"></use></svg> ${r.model}`}
 				${r.cost ? ` • $${r.cost.toFixed(4)}` : ""}
 				${r.response_time ? ` • ${r.response_time}s` : ""}
 			</div>`;
@@ -174,7 +174,7 @@ oly_ai.ask_erp = function (question) {
 					question: values.question,
 				})
 				.then((r) => {
-					const meta = `<div class="text-muted small mb-2">${r.cached ? "⚡ Cached" : `<svg class="es-icon icon-xs"><use href="#es-line-sparkle"></use></svg> ${r.model}`}${r.cost ? ` • $${r.cost.toFixed(4)}` : ""}</div>`;
+					const meta = `<div class="text-muted small mb-2">${r.cached ? "⚡ Cached" : `<svg class="es-icon icon-xs"><use href="#es-line-star"></use></svg> ${r.model}`}${r.cost ? ` • $${r.cost.toFixed(4)}` : ""}</div>`;
 					d.fields_dict.response_area.$wrapper.html(
 						`${meta}<div style="padding:12px; background:var(--bg-light-gray); border-radius:8px;">${frappe.markdown(r.content)}</div>`
 					);
@@ -199,7 +199,7 @@ $(document).ready(function () {
 				const $btn = $(
 					`<li class="nav-item">
 						<a class="nav-link btn-reset text-muted" href="#" title="${__("Ask ERP (AI)")}" onclick="oly_ai.ask_erp(); return false;">
-							<svg class="es-icon icon-sm"><use href="#es-line-sparkle"></use></svg>
+							<svg class="es-icon icon-sm"><use href="#es-line-star"></use></svg>
 						</a>
 					</li>`
 				);
