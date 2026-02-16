@@ -152,8 +152,20 @@ oly_ai.Panel = class {
 
     // 2. Panel element — exactly like Chat's .chat-element
     //    Hidden by default with .hide(), shown with .fadeIn(250)
+    //    ALL critical styles INLINE — CSS file cannot be relied upon
     this.$panel = $(document.createElement('div'));
     this.$panel.addClass('oly-ai-element');
+    this.$panel.css({
+      'height': '582px',
+      'width': '100%',
+      'position': 'relative',
+      'box-shadow': '0px 2px 6px rgba(17,43,66,0.08), 0px 1px 4px rgba(17,43,66,0.1)',
+      'background': 'var(--card-bg)',
+      'border-radius': '6px',
+      'margin-bottom': '1rem',
+      'border': '1px solid var(--dark-border-color)',
+      'overflow': 'hidden'
+    });
     this.$panel.hide(); // HIDDEN BY DEFAULT — just like Chat
 
     // Cross/close button — exactly like Chat's .chat-cross-button
@@ -162,17 +174,28 @@ oly_ai.Panel = class {
       ICON.close_icon + '</span>'
     );
 
-    // Container for content
+    // Container for content — ALL critical styles INLINE
     this.$container = $(document.createElement('div'));
     this.$container.addClass('oly-ai-container');
+    this.$container.css({
+      'display': 'flex',
+      'flex-direction': 'column',
+      'height': '100%',
+      'padding': '0',
+      'margin': '0',
+      'overflow': 'hidden'
+    });
 
     // Header
     this.$container.append(
-      '<div class="oly-ai-header">' +
-      '  <div class="oly-ai-header-brand">' + ICON.sparkles + ' <span>' + __("AI Assistant") + '</span></div>' +
-      '  <div class="oly-ai-header-actions">' +
-      '    <a href="/app/ask-ai" class="oly-ai-hact" title="' + __("Full page") + '">' + ICON.expand + '</a>' +
-      '    <span class="oly-ai-hact" data-action="new" title="' + __("New chat") + '">' + ICON.plus + '</span>' +
+      '<div class="oly-ai-header" style="display:flex;align-items:center;justify-content:space-between;padding:12px;border-bottom:1px solid var(--dark-border-color);flex-shrink:0;">' +
+      '  <div style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;color:var(--heading-color);">' +
+      '    <span style="color:var(--primary-color);display:flex;">' + ICON.sparkles + '</span>' +
+      '    <span>' + __("AI Assistant") + '</span>' +
+      '  </div>' +
+      '  <div style="display:flex;align-items:center;gap:4px;">' +
+      '    <a href="/app/ask-ai" style="display:flex;align-items:center;padding:6px;border-radius:6px;color:var(--text-muted);text-decoration:none;" title="' + __("Full page") + '">' + ICON.expand + '</a>' +
+      '    <span class="oly-ai-hact" data-action="new" style="display:flex;align-items:center;padding:6px;border-radius:6px;color:var(--text-muted);cursor:pointer;" title="' + __("New chat") + '">' + ICON.plus + '</span>' +
       '  </div>' +
       '</div>'
     );
@@ -180,15 +203,22 @@ oly_ai.Panel = class {
     // Body (messages / welcome)
     this.$body = $(document.createElement('div'));
     this.$body.addClass('oly-ai-body');
+    this.$body.css({
+      'flex': '1',
+      'overflow-y': 'auto',
+      'padding': '12px',
+      'overflow-wrap': 'break-word'
+    });
     this.$container.append(this.$body);
 
     // Input area
     this.$container.append(
-      '<div class="oly-ai-actions">' +
-      '  <textarea class="oly-ai-input" rows="1" placeholder="' + __("Ask anything...") + '" maxlength="4000"></textarea>' +
-      '  <span class="oly-ai-send-btn">' + ICON.send + '</span>' +
+      '<div style="display:flex;align-items:center;padding:3px 12px 12px 12px;flex-shrink:0;">' +
+      '  <textarea class="oly-ai-input" rows="1" placeholder="' + __("Ask anything...") + '" maxlength="4000"' +
+      '    style="flex:1;margin:0 10px 0 0;border-radius:100px;font-size:0.875rem;border:1px solid var(--dark-border-color);background:var(--control-bg);color:var(--text-color);padding:8px 14px;resize:none;min-height:36px;max-height:120px;line-height:1.4;outline:none;font-family:inherit;"></textarea>' +
+      '  <span class="oly-ai-send-btn" style="cursor:pointer;height:2rem;width:2rem;min-width:2rem;border-radius:50%;background:var(--primary-color);display:flex;align-items:center;justify-content:center;">' + ICON.send + '</span>' +
       '</div>' +
-      '<a href="/app/ask-ai" class="oly-ai-expand-link">' + __("Open full page") + ' &rarr;</a>'
+      '<a href="/app/ask-ai" style="display:block;text-align:center;font-size:0.75rem;color:var(--text-muted);padding:0 0 8px;text-decoration:none;">' + __("Open full page") + ' &rarr;</a>'
     );
 
     this.$panel.append(this.$container);
