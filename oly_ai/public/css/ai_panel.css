@@ -1,0 +1,53 @@
+/* Oly AI — Panel & Dialog Styles */
+
+.ai-response-content {
+	font-size: 14px;
+	line-height: 1.6;
+}
+
+.ai-response-content h1,
+.ai-response-content h2,
+.ai-response-content h3 {
+	margin-top: 12px;
+	margin-bottom: 8px;
+}
+
+.ai-response-content ul,
+.ai-response-content ol {
+	padding-left: 20px;
+}
+
+.ai-response-content li {
+	margin-bottom: 4px;
+}
+
+.ai-response-content code {
+	background: var(--bg-dark-gray);
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-size: 13px;
+}
+
+.ai-response-content pre {
+	background: var(--bg-dark-gray);
+	padding: 12px;
+	border-radius: 8px;
+	overflow-x: auto;
+}
+
+.ai-response-content blockquote {
+	border-left: 3px solid var(--primary);
+	padding-left: 12px;
+	margin-left: 0;
+	color: var(--text-muted);
+}
+
+.ai-meta {
+	padding: 4px 10px;
+	font-size: 11px;
+}
+
+.ai-loading .spinner-border {
+	width: 2rem;
+	height: 2rem;
+}

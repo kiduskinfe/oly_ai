@@ -1,0 +1,164 @@
+{
+ "actions": [],
+ "autoname": "field:template_name",
+ "creation": "2026-02-16 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "template_name",
+  "feature",
+  "reference_doctype",
+  "enabled",
+  "is_standard",
+  "column_break_main",
+  "model_override",
+  "temperature_override",
+  "max_tokens_override",
+  "prompts_section",
+  "system_prompt",
+  "user_prompt_template",
+  "variables_section",
+  "context_fields",
+  "include_communications",
+  "include_comments",
+  "max_context_length"
+ ],
+ "fields": [
+  {
+   "fieldname": "template_name",
+   "fieldtype": "Data",
+   "label": "Template Name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "feature",
+   "fieldtype": "Select",
+   "label": "Feature",
+   "options": "Summarize\nTriage\nSuggest Reply\nAsk ERP\nDraft\nClassify\nCustom",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "DocType",
+   "options": "DocType",
+   "in_standard_filter": 1,
+   "description": "Which DocType this template applies to. Leave blank for global."
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "is_standard",
+   "fieldtype": "Check",
+   "label": "Is Standard",
+   "default": 0,
+   "read_only": 1,
+   "description": "Standard templates are shipped with the app"
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "model_override",
+   "fieldtype": "Data",
+   "label": "Model Override",
+   "description": "Use a specific model for this template (e.g. gpt-4o for complex tasks)"
+  },
+  {
+   "fieldname": "temperature_override",
+   "fieldtype": "Float",
+   "label": "Temperature Override"
+  },
+  {
+   "fieldname": "max_tokens_override",
+   "fieldtype": "Int",
+   "label": "Max Tokens Override"
+  },
+  {
+   "fieldname": "prompts_section",
+   "fieldtype": "Section Break",
+   "label": "Prompt Templates"
+  },
+  {
+   "fieldname": "system_prompt",
+   "fieldtype": "Code",
+   "label": "System Prompt",
+   "options": "Markdown",
+   "reqd": 1,
+   "description": "Instructions for the AI. Use {doctype}, {name}, {field_name} as placeholders."
+  },
+  {
+   "fieldname": "user_prompt_template",
+   "fieldtype": "Code",
+   "label": "User Prompt Template",
+   "options": "Markdown",
+   "reqd": 1,
+   "description": "The actual request. Use {field_name} placeholders from the document."
+  },
+  {
+   "fieldname": "variables_section",
+   "fieldtype": "Section Break",
+   "label": "Context Configuration"
+  },
+  {
+   "fieldname": "context_fields",
+   "fieldtype": "Small Text",
+   "label": "Context Fields",
+   "description": "Comma-separated field names to include from the document. Leave blank for all standard fields."
+  },
+  {
+   "fieldname": "include_communications",
+   "fieldtype": "Check",
+   "label": "Include Communications",
+   "default": 1,
+   "description": "Include recent emails/messages linked to this document"
+  },
+  {
+   "fieldname": "include_comments",
+   "fieldtype": "Check",
+   "label": "Include Comments",
+   "default": 1,
+   "description": "Include comments on this document"
+  },
+  {
+   "fieldname": "max_context_length",
+   "fieldtype": "Int",
+   "label": "Max Context Length (chars)",
+   "default": 4000,
+   "description": "Trim context to this length to control token usage"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-02-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Oly AI",
+ "name": "AI Prompt Template",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 0,
+   "print": 0,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

@@ -1,0 +1,259 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-02-16 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "provider_section",
+  "provider_type",
+  "api_key",
+  "base_url",
+  "column_break_provider",
+  "default_model",
+  "embedding_model",
+  "embedding_base_url",
+  "parameters_section",
+  "max_tokens",
+  "temperature",
+  "column_break_params",
+  "top_p",
+  "timeout_seconds",
+  "budget_section",
+  "monthly_budget_usd",
+  "daily_request_limit",
+  "column_break_budget",
+  "current_month_spend",
+  "requests_today",
+  "cache_section",
+  "enable_caching",
+  "cache_ttl_hours",
+  "logging_section",
+  "enable_audit_logging",
+  "enable_cost_tracking",
+  "column_break_logging",
+  "log_prompts",
+  "log_responses",
+  "self_hosted_section",
+  "self_hosted_info"
+ ],
+ "fields": [
+  {
+   "fieldname": "provider_section",
+   "fieldtype": "Section Break",
+   "label": "AI Provider"
+  },
+  {
+   "fieldname": "provider_type",
+   "fieldtype": "Select",
+   "label": "Provider Type",
+   "options": "OpenAI\nAnthropic\nCustom (OpenAI Compatible)",
+   "default": "OpenAI",
+   "reqd": 1,
+   "description": "Select 'Custom' for self-hosted (Ollama, vLLM, LiteLLM)"
+  },
+  {
+   "fieldname": "api_key",
+   "fieldtype": "Password",
+   "label": "API Key",
+   "reqd": 1,
+   "description": "Your provider API key. For self-hosted without auth, enter any value."
+  },
+  {
+   "fieldname": "base_url",
+   "fieldtype": "Data",
+   "label": "Base URL",
+   "description": "Default: auto-set per provider. For self-hosted: http://your-server:11434/v1",
+   "depends_on": "eval:doc.provider_type=='Custom (OpenAI Compatible)'"
+  },
+  {
+   "fieldname": "column_break_provider",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_model",
+   "fieldtype": "Data",
+   "label": "Default Model",
+   "default": "gpt-4o-mini",
+   "reqd": 1,
+   "description": "e.g. gpt-4o-mini, claude-3-5-sonnet-20241022, llama3.1"
+  },
+  {
+   "fieldname": "embedding_model",
+   "fieldtype": "Data",
+   "label": "Embedding Model",
+   "default": "text-embedding-3-small",
+   "description": "For RAG / Ask ERP. Leave blank to disable embeddings."
+  },
+  {
+   "fieldname": "embedding_base_url",
+   "fieldtype": "Data",
+   "label": "Embedding Base URL",
+   "description": "If different from main provider. For self-hosted embeddings."
+  },
+  {
+   "fieldname": "parameters_section",
+   "fieldtype": "Section Break",
+   "label": "Model Parameters"
+  },
+  {
+   "fieldname": "max_tokens",
+   "fieldtype": "Int",
+   "label": "Max Tokens per Request",
+   "default": 2048,
+   "description": "Maximum output tokens per AI call"
+  },
+  {
+   "fieldname": "temperature",
+   "fieldtype": "Float",
+   "label": "Temperature",
+   "default": 0.3,
+   "description": "0 = deterministic, 1 = creative. 0.3 recommended for ERP tasks."
+  },
+  {
+   "fieldname": "column_break_params",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "top_p",
+   "fieldtype": "Float",
+   "label": "Top P",
+   "default": 1.0
+  },
+  {
+   "fieldname": "timeout_seconds",
+   "fieldtype": "Int",
+   "label": "Timeout (seconds)",
+   "default": 30,
+   "description": "Max wait time for AI response"
+  },
+  {
+   "fieldname": "budget_section",
+   "fieldtype": "Section Break",
+   "label": "Budget & Rate Limits"
+  },
+  {
+   "fieldname": "monthly_budget_usd",
+   "fieldtype": "Currency",
+   "label": "Monthly Budget Cap (USD)",
+   "default": 100,
+   "description": "AI calls stop when this is reached. 0 = unlimited."
+  },
+  {
+   "fieldname": "daily_request_limit",
+   "fieldtype": "Int",
+   "label": "Daily Request Limit per User",
+   "default": 100,
+   "description": "Max AI requests per user per day. 0 = unlimited."
+  },
+  {
+   "fieldname": "column_break_budget",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "current_month_spend",
+   "fieldtype": "Currency",
+   "label": "Current Month Spend (USD)",
+   "read_only": 1,
+   "description": "Auto-calculated from usage"
+  },
+  {
+   "fieldname": "requests_today",
+   "fieldtype": "Int",
+   "label": "Total Requests Today",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cache_section",
+   "fieldtype": "Section Break",
+   "label": "Caching"
+  },
+  {
+   "fieldname": "enable_caching",
+   "fieldtype": "Check",
+   "label": "Enable Response Caching",
+   "default": 1,
+   "description": "Cache identical requests to reduce API costs by 60-80%"
+  },
+  {
+   "fieldname": "cache_ttl_hours",
+   "fieldtype": "Int",
+   "label": "Cache TTL (hours)",
+   "default": 4,
+   "description": "How long to cache responses. 0 = indefinite.",
+   "depends_on": "eval:doc.enable_caching"
+  },
+  {
+   "fieldname": "logging_section",
+   "fieldtype": "Section Break",
+   "label": "Logging & Audit"
+  },
+  {
+   "fieldname": "enable_audit_logging",
+   "fieldtype": "Check",
+   "label": "Enable Audit Logging",
+   "default": 1,
+   "description": "Log every AI call to AI Audit Log"
+  },
+  {
+   "fieldname": "enable_cost_tracking",
+   "fieldtype": "Check",
+   "label": "Enable Cost Tracking",
+   "default": 1,
+   "description": "Track token usage and estimated costs"
+  },
+  {
+   "fieldname": "column_break_logging",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "log_prompts",
+   "fieldtype": "Check",
+   "label": "Log Prompts",
+   "default": 0,
+   "description": "Store full prompts in audit log (may contain sensitive data)"
+  },
+  {
+   "fieldname": "log_responses",
+   "fieldtype": "Check",
+   "label": "Log Responses",
+   "default": 1,
+   "description": "Store AI responses in audit log"
+  },
+  {
+   "fieldname": "self_hosted_section",
+   "fieldtype": "Section Break",
+   "label": "Self-Hosted / Future Setup",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "self_hosted_info",
+   "fieldtype": "HTML",
+   "label": "Self-Hosted Info",
+   "options": "<div class='alert alert-info'><b>To switch to self-hosted AI:</b><ol><li>Set Provider Type to 'Custom (OpenAI Compatible)'</li><li>Set Base URL to your Ollama/vLLM endpoint (e.g. http://your-server:11434/v1)</li><li>Set the model name (e.g. llama3.1)</li><li>Set API Key to any value (or your server's auth token)</li></ol><p>No code changes needed. All features work the same.</p></div>"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-02-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Oly AI",
+ "name": "AI Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 0,
+   "print": 0,
+   "read": 1,
+   "role": "System Manager",
+   "share": 0,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}
