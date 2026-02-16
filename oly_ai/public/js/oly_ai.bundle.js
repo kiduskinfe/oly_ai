@@ -199,16 +199,20 @@ oly_ai.Panel = class {
     this.$send = this.$panel.find('.oly-ai-send-btn');
 
     // 3. Bubble/FAB — exactly like Chat's #chat-bubble
+    //    On desk, bubble is hidden (d-none) — navbar is the trigger
+    //    On portal/website, bubble is visible
+    this.is_desk = 'desk' in frappe;
     this.open_title = __('AI Assistant');
     this.closed_title = __('Close');
+    var bubble_visible = this.is_desk ? ' d-none' : '';
 
     this.open_bubble_html =
-      '<div class="oly-ai-bubble">' +
+      '<div class="oly-ai-bubble' + bubble_visible + '">' +
       '  <span class="oly-ai-bubble-icon">' + ICON.sparkles_lg + '</span>' +
       '</div>';
 
     this.closed_bubble_html =
-      '<div class="oly-ai-bubble oly-ai-bubble-closed">' +
+      '<div class="oly-ai-bubble oly-ai-bubble-closed' + bubble_visible + '">' +
       '  <span>' + ICON.close_icon + '</span>' +
       '</div>';
 
@@ -223,7 +227,7 @@ oly_ai.Panel = class {
       ICON.sparkles +
       '</li>';
 
-    if ('desk' in frappe) {
+    if (this.is_desk) {
       $('header.navbar > .container > .navbar-collapse > ul').prepend(navbar_icon_html);
     }
 

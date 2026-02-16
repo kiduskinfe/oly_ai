@@ -35,9 +35,9 @@
   border-radius: 6px;
   margin-bottom: 1rem;
   border: 1px solid var(--dark-border-color);
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
+  /* NO display:flex here — jQuery .fadeIn() sets display:block
+     which would break flex. Container handles flex layout instead. */
 }
 
 .oly-ai-container {
@@ -46,6 +46,7 @@
   height: 100%;
   padding: 0;
   margin: 0;
+  overflow: hidden;
 }
 
 /* ── Header ── */
@@ -196,9 +197,13 @@
    ──────────────────────────────────────────── */
 .oly-ai-nav {
   cursor: pointer;
+  display: flex;
+  align-items: center;
 }
 .oly-ai-nav svg {
   fill: var(--text-muted);
+  width: 20px;
+  height: 20px;
 }
 .oly-ai-nav:hover svg {
   fill: var(--primary-color);
