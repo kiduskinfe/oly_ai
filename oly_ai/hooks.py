@@ -9,12 +9,8 @@ app_license = "MIT"
 required_apps = ["frappe", "erpnext"]
 
 # JS/CSS includes in Desk
-app_include_js = [
-    "/assets/oly_ai/js/oly_ai.bundle.js",
-]
-app_include_css = [
-    "/assets/oly_ai/css/ai_panel.css",
-]
+app_include_js = "oly_ai.bundle.js"
+app_include_css = "/assets/oly_ai/css/ai_panel.css"
 
 # DocType JS hooks — AI buttons on key doctypes
 doctype_js = {
