@@ -1,0 +1,104 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-02-16 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "user",
+  "column_break_main",
+  "model",
+  "total_tokens",
+  "total_cost",
+  "messages_section",
+  "messages"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Model",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "total_tokens",
+   "fieldtype": "Int",
+   "label": "Total Tokens",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_cost",
+   "fieldtype": "Currency",
+   "label": "Total Cost (USD)",
+   "precision": 6,
+   "read_only": 1
+  },
+  {
+   "fieldname": "messages_section",
+   "fieldtype": "Section Break",
+   "label": "Messages"
+  },
+  {
+   "fieldname": "messages",
+   "fieldtype": "Table",
+   "label": "Messages",
+   "options": "AI Chat Message"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-02-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Oly AI",
+ "name": "AI Chat Session",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 0,
+   "print": 0,
+   "read": 1,
+   "role": "System Manager",
+   "share": 0,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 0,
+   "print": 0,
+   "read": 1,
+   "role": "All",
+   "share": 0,
+   "write": 1,
+   "if_owner": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
+}
