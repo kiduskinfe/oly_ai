@@ -36,7 +36,7 @@
    "fieldname": "feature",
    "fieldtype": "Select",
    "label": "Feature",
-   "options": "Summarize\nTriage\nSuggest Reply\nAsk ERP\nDraft\nClassify\nCustom",
+   "options": "Summarize\nTriage\nSuggest Reply\nAsk AI\nDraft\nClassify\nCustom",
    "reqd": 1,
    "in_list_view": 1,
    "in_standard_filter": 1

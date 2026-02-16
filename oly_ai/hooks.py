@@ -8,6 +8,9 @@ app_license = "MIT"
 # Required apps
 required_apps = ["frappe", "erpnext"]
 
+# Post-install setup
+after_install = "oly_ai.setup.after_install"
+
 # JS/CSS includes in Desk
 app_include_js = "oly_ai.bundle.js"
 app_include_css = "/assets/oly_ai/css/ai_panel.css"

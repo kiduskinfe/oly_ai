@@ -60,6 +60,16 @@ def ai_assist(doctype, name, feature, custom_prompt=None):
 	"""
 	user = frappe.session.user
 
+	# 0. Check AI is configured
+	settings = frappe.get_cached_doc("AI Settings")
+	if not settings.is_configured():
+		frappe.throw(
+			_("AI is not configured yet. Please go to {0} and set your API key.").format(
+				'<a href="/app/ai-settings">AI Settings</a>'
+			),
+			title=_("AI Not Configured")
+		)
+
 	# 1. Permission check
 	if not frappe.has_permission(doctype, "read", name):
 		frappe.throw(_("You don't have permission to read this document"))
@@ -78,7 +88,6 @@ def ai_assist(doctype, name, feature, custom_prompt=None):
 	messages = build_messages(system_prompt, user_prompt, context)
 
 	# 5. Determine model
-	settings = frappe.get_cached_doc("AI Settings")
 	model = settings.default_model
 	template = _get_template(feature, doctype)
 	if template and template.model_override:
@@ -136,7 +145,7 @@ def ai_assist(doctype, name, feature, custom_prompt=None):
 
 @frappe.whitelist()
 def ask_erp(question):
-	"""Ask ERP — general Q&A about the system, SOPs, policies.
+	"""Ask AI — general Q&A about the system, SOPs, policies.
 
 	Args:
 		question: User's question in natural language
@@ -146,12 +155,21 @@ def ask_erp(question):
 	"""
 	user = frappe.session.user
 
+	# Check AI is configured
+	settings = frappe.get_cached_doc("AI Settings")
+	if not settings.is_configured():
+		frappe.throw(
+			_("AI is not configured yet. Please go to {0} and set your API key.").format(
+				'<a href="/app/ai-settings">AI Settings</a>'
+			),
+			title=_("AI Not Configured")
+		)
+
 	# Budget check
 	allowed, reason = check_budget(user)
 	if not allowed:
 		frappe.throw(_(reason))
 
-	settings = frappe.get_cached_doc("AI Settings")
 	model = settings.default_model
 
 	system_prompt = """You are an AI assistant for ERPNext ERP system at OLY Technologies.
@@ -173,17 +191,17 @@ Rules:
 	messages = build_messages(system_prompt, user_prompt)
 
 	# Check cache
-	cached = get_cached_response(messages, model, "Ask ERP")
+	cached = get_cached_response(messages, model, "Ask AI")
 	if cached:
-		_log_audit(user, "Ask ERP", "", "", model, "", cached.get("content", ""), 0, 0, 0, 0, "Cached", cached=True)
+		_log_audit(user, "Ask AI", "", "", model, "", cached.get("content", ""), 0, 0, 0, 0, "Cached", cached=True)
 		return {"content": cached.get("content", ""), "model": model, "cached": True, "cost": 0}
 
 	try:
 		provider = LLMProvider(settings)
 		result = provider.chat(messages, model=model)
 		cost = track_usage(model, result["tokens_input"], result["tokens_output"], user)
-		set_cached_response(messages, model, result, "Ask ERP")
-		_log_audit(user, "Ask ERP", "", "", model, question, result["content"], result["tokens_input"], result["tokens_output"], cost, result["response_time"], "Success")
+		set_cached_response(messages, model, result, "Ask AI")
+		_log_audit(user, "Ask AI", "", "", model, question, result["content"], result["tokens_input"], result["tokens_output"], cost, result["response_time"], "Success")
 
 		return {
 			"content": result["content"],
@@ -192,7 +210,7 @@ Rules:
 			"cost": cost,
 		}
 	except Exception as e:
-		_log_audit(user, "Ask ERP", "", "", model, question, "", 0, 0, 0, 0, "Error", error=str(e))
+		_log_audit(user, "Ask AI", "", "", model, question, "", 0, 0, 0, 0, "Error", error=str(e))
 		raise
 
 
