@@ -146,12 +146,13 @@ def ai_assist(doctype, name, feature, custom_prompt=None):
 @frappe.whitelist()
 def ask_erp(question):
 	"""Ask AI — general Q&A about the system, SOPs, policies.
+	Enhanced with RAG: retrieves relevant indexed documents as context.
 
 	Args:
 		question: User's question in natural language
 
 	Returns:
-		dict: {"content": str, "model": str, "cached": bool, "cost": float}
+		dict: {"content": str, "model": str, "cached": bool, "cost": float, "sources": list}
 	"""
 	user = frappe.session.user
 
@@ -172,6 +173,15 @@ def ask_erp(question):
 
 	model = settings.default_model
 
+	# Try RAG retrieval for relevant context
+	rag_context = ""
+	sources = []
+	try:
+		from oly_ai.core.rag.retriever import build_rag_context
+		rag_context, sources = build_rag_context(question, top_k=5, min_score=0.7)
+	except Exception:
+		pass  # RAG is optional — if it fails, continue without it
+
 	system_prompt = """You are an AI assistant for ERPNext ERP system at OLY Technologies.
 You help employees with questions about:
 - Company SOPs and policies
@@ -185,16 +195,21 @@ Rules:
 - Be concise and actionable.
 - Reference specific document names or processes when possible.
 - Never make up information about company policies.
-- If the question requires accessing specific data, tell the user which DocType/report to check."""
+- If the question requires accessing specific data, tell the user which DocType/report to check.
+- When referencing sources, cite the source number [Source N]."""
 
-	user_prompt = f"Question: {question}"
+	if rag_context:
+		user_prompt = f"Relevant company documents:\n\n{rag_context}\n\n---\n\nQuestion: {question}"
+	else:
+		user_prompt = f"Question: {question}"
+
 	messages = build_messages(system_prompt, user_prompt)
 
 	# Check cache
 	cached = get_cached_response(messages, model, "Ask AI")
 	if cached:
 		_log_audit(user, "Ask AI", "", "", model, "", cached.get("content", ""), 0, 0, 0, 0, "Cached", cached=True)
-		return {"content": cached.get("content", ""), "model": model, "cached": True, "cost": 0}
+		return {"content": cached.get("content", ""), "model": model, "cached": True, "cost": 0, "sources": sources}
 
 	try:
 		provider = LLMProvider(settings)
@@ -208,6 +223,7 @@ Rules:
 			"model": result["model"],
 			"cached": False,
 			"cost": cost,
+			"sources": sources,
 		}
 	except Exception as e:
 		_log_audit(user, "Ask AI", "", "", model, question, "", 0, 0, 0, 0, "Error", error=str(e))

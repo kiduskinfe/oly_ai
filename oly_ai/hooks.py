@@ -25,6 +25,15 @@ doctype_js = {
     "Project": "public/js/doctype_hooks/project.js",
     "Sales Order": "public/js/doctype_hooks/sales_order.js",
     "Sales Invoice": "public/js/doctype_hooks/sales_invoice.js",
+    "Employee": "public/js/doctype_hooks/employee.js",
+    "Purchase Order": "public/js/doctype_hooks/purchase_order.js",
+    "Purchase Invoice": "public/js/doctype_hooks/purchase_invoice.js",
+    "Leave Application": "public/js/doctype_hooks/leave_application.js",
+    "Customer": "public/js/doctype_hooks/customer.js",
+    "Supplier": "public/js/doctype_hooks/supplier.js",
+    "Expense Claim": "public/js/doctype_hooks/expense_claim.js",
+    "Journal Entry": "public/js/doctype_hooks/journal_entry.js",
+    "Payment Entry": "public/js/doctype_hooks/payment_entry.js",
 }
 
 # Scheduled tasks

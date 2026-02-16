@@ -1,9 +1,44 @@
 /* Oly AI — Main JS Bundle
- * Provides the AI Assist panel and helpers for all doctypes.
+ * Provides the AI Assist panel, Ask AI chat, and helpers for all doctypes.
  * Loaded globally via app_include_js.
  */
 
 frappe.provide("oly_ai");
+
+// ============================================================
+// Markdown renderer helper — renders AI markdown to styled HTML
+// ============================================================
+oly_ai.render_markdown = function (md_text) {
+	if (!md_text) return "";
+	// Use Frappe's built-in markdown renderer
+	let html = frappe.markdown(md_text);
+	// Wrap in styled container
+	return `<div class="ai-response-content">${html}</div>`;
+};
+
+// ============================================================
+// Response meta bar — shows model, cost, timing, copy button
+// ============================================================
+oly_ai._build_meta_bar = function (r, include_copy) {
+	const parts = [];
+	if (r.cached) {
+		parts.push('<span class="ai-meta-badge ai-meta-cached">⚡ Cached</span>');
+	} else {
+		if (r.model) parts.push(`<span class="ai-meta-badge">${r.model}</span>`);
+	}
+	if (r.cost) parts.push(`<span class="ai-meta-item">$${r.cost.toFixed(4)}</span>`);
+	if (r.response_time) parts.push(`<span class="ai-meta-item">${r.response_time}s</span>`);
+	if (r.tokens) parts.push(`<span class="ai-meta-item">${r.tokens} tokens</span>`);
+
+	let copy_btn = "";
+	if (include_copy) {
+		copy_btn = `<button class="btn btn-xs btn-default ai-copy-btn" title="${__("Copy")}">
+			<svg class="es-icon icon-xs"><use href="#es-line-copy"></use></svg> ${__("Copy")}
+		</button>`;
+	}
+
+	return `<div class="ai-meta-bar">${parts.join('<span class="ai-meta-sep">•</span>')}${copy_btn}</div>`;
+};
 
 // ============================================================
 // AI Assist Dialog — reusable for all doctypes
@@ -16,7 +51,7 @@ oly_ai.show_assist_dialog = function (frm, feature, custom_prompt) {
 			{
 				fieldname: "ai_response_area",
 				fieldtype: "HTML",
-				options: `<div class="ai-loading" style="text-align:center; padding:40px;">
+				options: `<div class="ai-loading">
 					<div class="spinner-border text-primary" role="status"></div>
 					<p class="mt-3 text-muted">${__("Analyzing document...")}</p>
 				</div>`,
@@ -56,20 +91,22 @@ oly_ai.show_assist_dialog = function (frm, feature, custom_prompt) {
 		})
 		.then((r) => {
 			d._ai_content = r.content;
-			const meta_html = `<div class="ai-meta text-muted small mb-2">
-				${r.cached ? "⚡ Cached" : `<svg class="es-icon icon-xs"><use href="#es-line-zap"></use></svg> ${r.model}`}
-				${r.cost ? ` • $${r.cost.toFixed(4)}` : ""}
-				${r.response_time ? ` • ${r.response_time}s` : ""}
-			</div>`;
+			const meta_html = oly_ai._build_meta_bar(r, true);
 			d.fields_dict.ai_response_area.$wrapper.html(
-				`${meta_html}<div class="ai-response-content" style="padding:10px; background:var(--bg-light-gray); border-radius:8px; max-height:500px; overflow-y:auto;">${frappe.markdown(r.content)}</div>`
+				`${meta_html}<div class="ai-response-box">${oly_ai.render_markdown(r.content)}</div>`
 			);
+			// Wire up inline copy button
+			d.$wrapper.find(".ai-copy-btn").on("click", function () {
+				frappe.utils.copy_to_clipboard(d._ai_content || "");
+				frappe.show_alert({ message: __("Copied!"), indicator: "green" });
+			});
 		})
 		.catch((err) => {
 			d.fields_dict.ai_response_area.$wrapper.html(
-				`<div class="text-danger" style="padding:20px;">
+				`<div class="ai-error">
+					<svg class="es-icon icon-sm"><use href="#es-line-alert-circle"></use></svg>
 					<strong>${__("AI Error")}</strong><br>
-					${err.message || __("Something went wrong. Check AI Settings.")}
+					<span class="text-muted">${err.message || __("Something went wrong. Check AI Settings.")}</span>
 				</div>`
 			);
 		});
@@ -138,7 +175,7 @@ oly_ai.add_ai_buttons = function (frm, features) {
 };
 
 // ============================================================
-// Ask AI — global search bar integration
+// Ask AI — navbar dialog with multi-turn conversation
 // ============================================================
 oly_ai.ask_erp = function (question) {
 	const d = new frappe.ui.Dialog({
@@ -164,34 +201,48 @@ oly_ai.ask_erp = function (question) {
 		primary_action_label: __("Ask"),
 		primary_action: function (values) {
 			d.fields_dict.response_area.$wrapper.html(
-				`<div class="ai-loading" style="text-align:center; padding:40px;">
+				`<div class="ai-loading">
 					<div class="spinner-border text-primary" role="status"></div>
 					<p class="mt-3 text-muted">${__("Thinking...")}</p>
 				</div>`
 			);
+			d.disable_primary_action();
 			frappe
 				.xcall("oly_ai.api.gateway.ask_erp", {
 					question: values.question,
 				})
 				.then((r) => {
-					const meta = `<div class="text-muted small mb-2">${r.cached ? "⚡ Cached" : `<svg class="es-icon icon-xs"><use href="#es-line-zap"></use></svg> ${r.model}`}${r.cost ? ` • $${r.cost.toFixed(4)}` : ""}</div>`;
+					d._ai_content = r.content;
+					const meta = oly_ai._build_meta_bar(r, true);
 					d.fields_dict.response_area.$wrapper.html(
-						`${meta}<div style="padding:12px; background:var(--bg-light-gray); border-radius:8px;">${frappe.markdown(r.content)}</div>`
+						`${meta}<div class="ai-response-box">${oly_ai.render_markdown(r.content)}</div>`
 					);
+					// Wire up copy button
+					d.$wrapper.find(".ai-copy-btn").on("click", function () {
+						frappe.utils.copy_to_clipboard(d._ai_content || "");
+						frappe.show_alert({ message: __("Copied!"), indicator: "green" });
+					});
+					// Clear question for follow-up
+					d.set_value("question", "");
+					d.enable_primary_action();
 				})
 				.catch((err) => {
 					d.fields_dict.response_area.$wrapper.html(
-						`<div class="text-danger" style="padding:20px;">${err.message || __("Error")}</div>`
+						`<div class="ai-error">
+							<svg class="es-icon icon-sm"><use href="#es-line-alert-circle"></use></svg>
+							${err.message || __("Error")}
+						</div>`
 					);
+					d.enable_primary_action();
 				});
 		},
 	});
 	d.show();
+	d.$wrapper.find(".modal-dialog").addClass("oly-ai-dialog");
 };
 
 // Add Ask AI to the navbar
 $(document).ready(function () {
-	// Add "Ask AI" to the navbar
 	if (frappe.boot && frappe.boot.user) {
 		setTimeout(() => {
 			const $navbar = $(".navbar-nav:last");
