@@ -1,394 +1,337 @@
+/* Ask AI — Full Page Experience
+ * Uses shared classes from oly_ai.bundle.js (oly_ai.ICON, oly_ai.render_markdown)
+ * Layout: Sidebar + Main chat area, styled with oly-fp-* and shared oly-m-* classes
+ */
 frappe.pages["ask-ai"].on_page_load = function (wrapper) {
-	const page = frappe.ui.make_app_page({
-		parent: wrapper,
-		title: __("Ask AI"),
-		single_column: true,
-	});
+const page = frappe.ui.make_app_page({
+parent: wrapper,
+title: __("Ask AI"),
+single_column: true,
+});
 
-	// ── Force full-screen: override Frappe's page containers ──
-	const $wrapper = $(wrapper);
-	$wrapper.find(".page-head").hide();
-	$wrapper.addClass("ai-page-wrapper");
-	// Remove Frappe's constraining wrappers
-	$wrapper.find(".page-body").css({
-		"margin": "0", "padding": "0", "max-width": "none"
-	});
-	$wrapper.find(".layout-main").css({
-		"margin": "0", "padding": "0", "max-width": "none"
-	});
-	$wrapper.find(".layout-main-section-wrapper").css({
-		"margin": "0", "padding": "0", "max-width": "none"
-	});
-	$wrapper.find(".layout-main-section").css({
-		"margin": "0", "padding": "0", "max-width": "none"
-	});
-	$wrapper.find(".container").css({
-		"max-width": "none", "padding": "0", "width": "100%"
-	});
-	// Also fix page-container if exists
-	$wrapper.find(".page-container").css({
-		"max-width": "none", "padding": "0"
-	});
+// Force full-bleed: hide Frappe page-head and add override class
+const $w = $(wrapper);
+$w.find(".page-head").hide();
+$w.addClass("ai-page-wrapper");
 
-	// State
-	let current_session = null;
-	let sessions_list = [];
-	let is_sending = false;
-	let sidebar_open = true;
+// State
+let current_session = null;
+let sessions = [];
+let sending = false;
+let sidebar_open = true;
 
-	// ── SVG Icons ──
-	const ICONS = {
-		plus: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
-		send: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3.478 2.405a.75.75 0 0 0-.926.94l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.405Z"/></svg>`,
-		trash: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
-		edit: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
-		search: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
-		menu: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`,
-		chat: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
-		ai: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="var(--primary, #2490ef)" stroke-width="1.5"/><circle cx="12" cy="12" r="4" fill="var(--primary, #2490ef)" opacity="0.3"/><circle cx="12" cy="12" r="2" fill="var(--primary, #2490ef)"/></svg>`,
-		copy: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
-		check: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
-	};
+// Icons from globally loaded bundle
+const I = oly_ai.ICON;
+const user_init = (frappe.session.user_fullname || "U").charAt(0).toUpperCase();
 
-	const user_initial = (frappe.session.user_fullname || "U").charAt(0).toUpperCase();
+const suggestions = [
+__("How do I create a Sales Order?"),
+__("What is our leave policy?"),
+__("Explain the purchase workflow"),
+__("How to submit a timesheet?"),
+];
 
-	const suggestions = [
-		"How do I create a Sales Order?",
-		"What is our leave policy?",
-		"Explain the purchase workflow",
-		"How to submit a timesheet?",
-	];
+// ── Build Layout ──
+page.main.html([
+'<div class="oly-fp" id="oly-fp">',
+// Sidebar
+'  <div class="oly-fp-sidebar" id="oly-fp-sidebar">',
+'    <div class="oly-fp-sb-top">',
+'      <button class="oly-fp-sb-new" id="fp-new">' + I.plus + '<span>' + __("New chat") + '</span></button>',
+'    </div>',
+'    <div class="oly-fp-sb-search">',
+'      <input type="text" id="fp-search" placeholder="' + __("Search...") + '" />',
+'    </div>',
+'    <div class="oly-fp-sb-list" id="fp-list"></div>',
+'    <div class="oly-fp-sb-bottom">',
+'      <div class="oly-fp-sb-user">',
+'        <div class="oly-fp-sb-avatar">' + user_init + '</div>',
+'        <span>' + (frappe.session.user_fullname || frappe.session.user) + '</span>',
+'      </div>',
+'    </div>',
+'  </div>',
+// Main chat
+'  <div class="oly-fp-main">',
+'    <div class="oly-fp-head">',
+'      <button class="oly-fp-toggle" id="fp-toggle" title="' + __("Toggle sidebar") + '">' + I.menu + '</button>',
+'      <span class="oly-fp-title" id="fp-title">' + __("New Chat") + '</span>',
+'      <span class="oly-fp-model">GPT-4o-mini</span>',
+'    </div>',
+'    <div class="oly-fp-msgs" id="fp-msgs"></div>',
+'    <div class="oly-fp-inputarea">',
+'      <div class="oly-input-wrap" style="max-width:850px;margin:0 auto;">',
+'        <textarea id="fp-input" rows="1" placeholder="' + __("Message AI...") + '" maxlength="4000"></textarea>',
+'        <button class="oly-input-send" id="fp-send" disabled>' + I.send + '</button>',
+'      </div>',
+'      <p class="oly-fp-disclaimer">' + __("AI can make mistakes. Verify important information.") + '</p>',
+'    </div>',
+'  </div>',
+'</div>',
+].join("\n"));
 
-	// ── Build Layout ──
-	page.main.html(`
-		<div class="ai-chat-app" id="ai-chat-app">
-			<!-- SIDEBAR -->
-			<div class="ai-sidebar" id="ai-sidebar">
-				<div class="ai-sb-top">
-					<button class="ai-sb-btn ai-sb-new" id="new-chat-btn">${ICONS.plus}<span>New chat</span></button>
-				</div>
-				<div class="ai-sb-search">
-					<input type="text" id="chat-search" placeholder="Search..." />
-				</div>
-				<div class="ai-sb-sessions" id="session-list"></div>
-				<div class="ai-sb-bottom">
-					<div class="ai-sb-user">
-						<div class="ai-sb-avatar">${user_initial}</div>
-						<span>${frappe.session.user_fullname || frappe.session.user}</span>
-					</div>
-				</div>
-			</div>
+const $fp = $("#oly-fp");
+const $list = $("#fp-list");
+const $msgs = $("#fp-msgs");
+const $input = $("#fp-input");
+const $send = $("#fp-send");
+const $title = $("#fp-title");
 
-			<!-- MAIN AREA -->
-			<div class="ai-chat-main" id="ai-chat-main">
-				<div class="ai-chat-topbar">
-					<button class="ai-topbar-toggle" id="sidebar-toggle">${ICONS.menu}</button>
-					<span class="ai-topbar-title" id="ai-topbar-title">New Chat</span>
-					<span class="ai-topbar-model">GPT-4o-mini</span>
-				</div>
+// ── Welcome Screen ──
+function show_welcome() {
+$msgs.html([
+'<div class="oly-welcome">',
+'  <div class="oly-welcome-icon">' + I.sparkles_lg + '</div>',
+'  <h2>' + __("How can I help you today?") + '</h2>',
+'  <div class="oly-chips oly-chips-grid">',
+suggestions.map(function (s) { return '<button class="oly-chip">' + s + '</button>'; }).join(""),
+'  </div>',
+'</div>',
+].join("\n"));
+$msgs.find(".oly-chip").on("click", function () {
+$input.val($(this).text().trim());
+send_message();
+});
+}
 
-				<div class="ai-chat-messages" id="ai-chat-messages">
-					<!-- Welcome -->
-					<div class="ai-chat-welcome" id="ai-chat-welcome">
-						<div class="ai-cw-icon">${ICONS.ai}</div>
-						<h2 class="ai-cw-title">How can I help you today?</h2>
-						<div class="ai-cw-grid">
-							${suggestions.map(s => `<button class="ai-cw-chip" data-q="${frappe.utils.escape_html(s)}">${s}</button>`).join("")}
-						</div>
-					</div>
-				</div>
+// ── Session List ──
+function load_sessions() {
+frappe.xcall("oly_ai.api.chat.get_sessions").then(function (data) {
+sessions = data || [];
+render_sessions(sessions);
+});
+}
 
-				<div class="ai-chat-inputarea">
-					<div class="ai-chat-inputbox" id="ai-chat-inputbox">
-						<textarea id="ai-input" rows="1" placeholder="Message AI..." maxlength="4000"></textarea>
-						<button class="ai-chat-sendbtn" id="ai-send" disabled title="Send">${ICONS.send}</button>
-					</div>
-					<p class="ai-chat-disclaimer">AI can make mistakes. Verify important information.</p>
-				</div>
-			</div>
-		</div>
-	`);
+function render_sessions(list) {
+if (!list.length) {
+$list.html('<div class="oly-fp-sb-empty">' + __("No conversations yet") + '</div>');
+return;
+}
+var groups = group_by_date(list);
+var html = "";
+groups.forEach(function (g) {
+html += '<div class="oly-fp-sb-group">';
+html += '<div class="oly-fp-sb-label">' + g.label + '</div>';
+g.items.forEach(function (s) {
+var active = current_session === s.name ? " active" : "";
+html += '<div class="oly-fp-sb-item' + active + '" data-name="' + s.name + '">';
+html += '<span class="oly-fp-sb-item-icon">' + I.chat + '</span>';
+html += '<span class="oly-fp-sb-item-title">' + frappe.utils.escape_html(s.title || __("Untitled")) + '</span>';
+html += '<span class="oly-fp-sb-item-acts">';
+html += '<button class="oly-fp-sb-act" data-act="edit" data-name="' + s.name + '" title="' + __("Rename") + '">' + I.edit + '</button>';
+html += '<button class="oly-fp-sb-act" data-act="delete" data-name="' + s.name + '" title="' + __("Delete") + '">' + I.trash + '</button>';
+html += '</span>';
+html += '</div>';
+});
+html += '</div>';
+});
+$list.html(html);
 
-	// ── References ──
-	const $app = $("#ai-chat-app");
-	const $sidebar = $("#ai-sidebar");
-	const $list = $("#session-list");
-	const $msgs = $("#ai-chat-messages");
-	const $input = $("#ai-input");
-	const $send = $("#ai-send");
-	const $topTitle = $("#ai-topbar-title");
+// Click session
+$list.find(".oly-fp-sb-item").on("click", function (e) {
+if ($(e.target).closest(".oly-fp-sb-act").length) return;
+open_session($(this).data("name"));
+});
+// Edit
+$list.find('[data-act="edit"]').on("click", function (e) {
+e.stopPropagation();
+rename_session($(this).data("name"));
+});
+// Delete
+$list.find('[data-act="delete"]').on("click", function (e) {
+e.stopPropagation();
+delete_session($(this).data("name"));
+});
+}
 
-	// ── Sidebar toggle ──
-	$("#sidebar-toggle").on("click", () => {
-		sidebar_open = !sidebar_open;
-		$app.toggleClass("ai-sidebar-closed", !sidebar_open);
-	});
+function group_by_date(list) {
+var now = frappe.datetime.now_date();
+var groups = {};
+list.forEach(function (s) {
+var d = (s.modified || s.creation || "").substring(0, 10);
+var label;
+if (d === now) label = __("Today");
+else if (d === frappe.datetime.add_days(now, -1)) label = __("Yesterday");
+else label = frappe.datetime.str_to_user(d);
+if (!groups[label]) groups[label] = { label: label, items: [] };
+groups[label].items.push(s);
+});
+return Object.values(groups);
+}
 
-	// ── Load sessions ──
-	function load_sessions(search) {
-		frappe.xcall("oly_ai.api.chat.get_sessions", { search: search || "", limit: 100 })
-			.then((data) => {
-				sessions_list = data || [];
-				render_sessions();
-			});
-	}
+// ── Session Operations ──
+function new_chat() {
+current_session = null;
+$title.text(__("New Chat"));
+show_welcome();
+$list.find(".oly-fp-sb-item").removeClass("active");
+$input.val("").css("height", "auto").focus();
+}
 
-	function render_sessions() {
-		if (!sessions_list.length) {
-			$list.html(`<div class="ai-sb-empty">No conversations yet</div>`);
-			return;
-		}
+function open_session(name) {
+current_session = name;
+$list.find(".oly-fp-sb-item").removeClass("active");
+$list.find('[data-name="' + name + '"]').first().addClass("active");
+var s = sessions.find(function (x) { return x.name === name; });
+$title.text(s ? s.title : __("Chat"));
 
-		const today = frappe.datetime.get_today();
-		const yesterday = frappe.datetime.add_days(today, -1);
-		const week_ago = frappe.datetime.add_days(today, -7);
-		const groups = { today: [], yesterday: [], week: [], older: [] };
+frappe.xcall("oly_ai.api.chat.get_messages", { session_name: name }).then(function (msgs) {
+$msgs.empty();
+if (!msgs || !msgs.length) {
+show_welcome();
+return;
+}
+msgs.forEach(function (m) {
+if (m.role === "user") append_user_msg(m.content);
+else append_ai_msg(m.content, m);
+});
+scroll_bottom();
+});
+}
 
-		sessions_list.forEach((s) => {
-			const d = s.modified.split(" ")[0];
-			if (d === today) groups.today.push(s);
-			else if (d === yesterday) groups.yesterday.push(s);
-			else if (d >= week_ago) groups.week.push(s);
-			else groups.older.push(s);
-		});
+function rename_session(name) {
+var s = sessions.find(function (x) { return x.name === name; });
+var old_title = s ? s.title : "";
+var d = new frappe.ui.Dialog({
+title: __("Rename Conversation"),
+fields: [{ fieldname: "title", fieldtype: "Data", label: __("Title"), reqd: 1, default: old_title }],
+primary_action_label: __("Save"),
+primary_action: function (v) {
+frappe.xcall("oly_ai.api.chat.rename_session", { session_name: name, title: v.title })
+.then(function () { d.hide(); load_sessions(); });
+},
+});
+d.show();
+}
 
-		let html = "";
-		function grp(label, items) {
-			if (!items.length) return "";
-			let h = `<div class="ai-sb-group"><div class="ai-sb-label">${label}</div>`;
-			items.forEach((s) => {
-				const cls = current_session === s.name ? " active" : "";
-				h += `<div class="ai-sb-item${cls}" data-name="${s.name}">
-					<span class="ai-sb-item-icon">${ICONS.chat}</span>
-					<span class="ai-sb-item-title">${frappe.utils.escape_html(s.title)}</span>
-					<span class="ai-sb-item-actions">
-						<button class="ai-sb-act" data-act="rename" data-name="${s.name}" title="Rename">${ICONS.edit}</button>
-						<button class="ai-sb-act" data-act="delete" data-name="${s.name}" title="Delete">${ICONS.trash}</button>
-					</span>
-				</div>`;
-			});
-			return h + `</div>`;
-		}
+function delete_session(name) {
+frappe.confirm(__("Delete this conversation?"), function () {
+frappe.xcall("oly_ai.api.chat.delete_session", { session_name: name }).then(function () {
+if (current_session === name) new_chat();
+load_sessions();
+});
+});
+}
 
-		html += grp(__("Today"), groups.today);
-		html += grp(__("Yesterday"), groups.yesterday);
-		html += grp(__("Previous 7 days"), groups.week);
-		html += grp(__("Older"), groups.older);
-		$list.html(html);
+// ── Messages ──
+function append_user_msg(text) {
+$msgs.append(
+'<div class="oly-m oly-m-user">' +
+'<div class="oly-m-bubble">' + frappe.utils.escape_html(text) + '</div>' +
+'<div class="oly-m-icon oly-m-icon-user">' + user_init + '</div></div>'
+);
+}
 
-		$list.find(".ai-sb-item").on("click", function (e) {
-			if ($(e.target).closest(".ai-sb-act").length) return;
-			open_session($(this).data("name"));
-		});
+function append_ai_msg(content, meta) {
+var parts = [r_model(meta), r_cost(meta)].filter(Boolean).join(" &middot; ");
+$msgs.append(
+'<div class="oly-m oly-m-ai">' +
+'<div class="oly-m-icon oly-m-icon-ai">' + I.sparkles + '</div>' +
+'<div class="oly-m-bubble">' +
+'<div class="oly-m-content">' + oly_ai.render_markdown(content) + '</div>' +
+'<div class="oly-m-foot">' +
+'<button class="oly-copy-btn" data-text="' + frappe.utils.escape_html(content) + '">' + I.copy + ' ' + __("Copy") + '</button>' +
+(parts ? '<span class="oly-m-meta">' + parts + '</span>' : '') +
+'</div></div></div>'
+);
+wire_copy();
+}
 
-		$list.find(".ai-sb-act").on("click", function (e) {
-			e.stopPropagation();
-			const act = $(this).data("act");
-			const n = $(this).data("name");
-			if (act === "delete") delete_session(n);
-			if (act === "rename") rename_session(n);
-		});
-	}
+function r_model(m) { return m && m.model ? m.model : ""; }
+function r_cost(m) { return m && m.cost ? "$" + Number(m.cost).toFixed(4) : ""; }
 
-	// ── New chat ──
-	$("#new-chat-btn").on("click", new_chat);
+function wire_copy() {
+$msgs.find(".oly-copy-btn").off("click").on("click", function () {
+frappe.utils.copy_to_clipboard($(this).data("text"));
+var $b = $(this);
+$b.html(I.check + " " + __("Copied"));
+setTimeout(function () { $b.html(I.copy + " " + __("Copy")); }, 2000);
+});
+}
 
-	function new_chat() {
-		current_session = null;
-		$topTitle.text("New Chat");
-		$msgs.html(`
-			<div class="ai-chat-welcome" id="ai-chat-welcome">
-				<div class="ai-cw-icon">${ICONS.ai}</div>
-				<h2 class="ai-cw-title">How can I help you today?</h2>
-				<div class="ai-cw-grid">
-					${suggestions.map(s => `<button class="ai-cw-chip" data-q="${frappe.utils.escape_html(s)}">${s}</button>`).join("")}
-				</div>
-			</div>
-		`);
-		wire_suggestions();
-		$list.find(".ai-sb-item").removeClass("active");
-		$input.focus();
-		if (window.innerWidth < 768) {
-			sidebar_open = false;
-			$app.addClass("ai-sidebar-closed");
-		}
-	}
+function scroll_bottom() {
+setTimeout(function () { var el = $msgs[0]; if (el) el.scrollTop = el.scrollHeight; }, 60);
+}
 
-	// ── Open session ──
-	function open_session(name) {
-		current_session = name;
-		const s = sessions_list.find(x => x.name === name);
-		$topTitle.text(s ? s.title : "Chat");
-		$list.find(".ai-sb-item").removeClass("active");
-		$list.find(`.ai-sb-item[data-name="${name}"]`).addClass("active");
+// ── Send Message ──
+function send_message() {
+var q = $input.val().trim();
+if (!q || sending) return;
+sending = true;
+$send.prop("disabled", true);
+$input.val("").css("height", "auto");
 
-		if (window.innerWidth < 768) {
-			sidebar_open = false;
-			$app.addClass("ai-sidebar-closed");
-		}
+var fire = function (sid) {
+$msgs.find(".oly-welcome").remove();
+append_user_msg(q);
 
-		$msgs.html(`<div class="ai-chat-loading"><div class="ai-typing"><span></span><span></span><span></span></div></div>`);
+var lid = "fp-ld-" + Date.now();
+$msgs.append(
+'<div class="oly-m oly-m-ai" id="' + lid + '">' +
+'<div class="oly-m-icon oly-m-icon-ai">' + I.sparkles + '</div>' +
+'<div class="oly-m-bubble"><div class="oly-typing"><span></span><span></span><span></span></div></div></div>'
+);
+scroll_bottom();
 
-		frappe.xcall("oly_ai.api.chat.get_messages", { session_name: name })
-			.then((msgs) => {
-				$msgs.html("");
-				if (!msgs || !msgs.length) {
-					$msgs.html(`<div class="ai-chat-welcome"><div class="ai-cw-icon">${ICONS.ai}</div><h2 class="ai-cw-title">How can I help you today?</h2></div>`);
-					return;
-				}
-				msgs.forEach(m => render_msg(m.role, m.content, m));
-				scroll_bottom();
-				$input.focus();
-			});
-	}
+frappe.xcall("oly_ai.api.chat.send_message", { session_name: sid, message: q })
+.then(function (r) {
+$("#" + lid).remove();
+append_ai_msg(r.content, r);
+scroll_bottom();
+sending = false;
+$send.prop("disabled", false);
+$input.focus();
+// Refresh session list (title may auto-update)
+load_sessions();
+})
+.catch(function (err) {
+$("#" + lid).replaceWith(
+'<div class="oly-m oly-m-ai">' +
+'<div class="oly-m-icon oly-m-icon-err">!</div>' +
+'<div class="oly-m-bubble oly-m-error">' + (err.message || __("Something went wrong")) + '</div></div>'
+);
+sending = false;
+$send.prop("disabled", false);
+});
+};
 
-	// ── Delete / Rename ──
-	function delete_session(name) {
-		frappe.confirm(__("Delete this conversation?"), () => {
-			frappe.xcall("oly_ai.api.chat.delete_session", { session_name: name }).then(() => {
-				if (current_session === name) new_chat();
-				load_sessions();
-				frappe.show_alert({ message: __("Deleted"), indicator: "green" });
-			});
-		});
-	}
+if (!current_session) {
+frappe.xcall("oly_ai.api.chat.create_session", { title: q.substring(0, 60) })
+.then(function (s) {
+current_session = s.name;
+$title.text(s.title || __("New Chat"));
+load_sessions();
+fire(s.name);
+});
+} else {
+fire(current_session);
+}
+}
 
-	function rename_session(name) {
-		const s = sessions_list.find(x => x.name === name);
-		const d = new frappe.ui.Dialog({
-			title: __("Rename Chat"),
-			fields: [{ fieldname: "title", fieldtype: "Data", label: __("Title"), default: s ? s.title : "", reqd: 1 }],
-			primary_action_label: __("Save"),
-			primary_action: (v) => {
-				frappe.xcall("oly_ai.api.chat.rename_session", { session_name: name, title: v.title }).then(() => {
-					d.hide();
-					if (current_session === name) $topTitle.text(v.title);
-					load_sessions();
-				});
-			},
-		});
-		d.show();
-	}
+// ── Events ──
+$("#fp-new").on("click", new_chat);
+$("#fp-toggle").on("click", function () {
+sidebar_open = !sidebar_open;
+$fp.toggleClass("fp-sidebar-closed", !sidebar_open);
+});
+$send.on("click", send_message);
+$input.on("keydown", function (e) {
+if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send_message(); }
+});
+$input.on("input", function () {
+this.style.height = "auto";
+this.style.height = Math.min(this.scrollHeight, 150) + "px";
+$send.prop("disabled", !this.value.trim());
+});
+// Search
+$("#fp-search").on("input", function () {
+var q = $(this).val().toLowerCase();
+if (!q) { render_sessions(sessions); return; }
+var filtered = sessions.filter(function (s) { return (s.title || "").toLowerCase().indexOf(q) > -1; });
+render_sessions(filtered);
+});
 
-	// ── Send message ──
-	function send_message() {
-		const q = $input.val().trim();
-		if (!q || is_sending) return;
-		is_sending = true;
-		$send.prop("disabled", true).addClass("sending");
-		$input.val("").css("height", "auto");
-
-		function do_send(sid) {
-			$msgs.find(".ai-chat-welcome").remove();
-			render_msg("user", q);
-
-			const lid = "ld-" + Date.now();
-			$msgs.append(`<div class="ai-cm ai-cm-ai" id="${lid}"><div class="ai-cm-avatar ai-cm-avatar-ai">${ICONS.ai}</div><div class="ai-cm-bubble"><div class="ai-typing"><span></span><span></span><span></span></div></div></div>`);
-			scroll_bottom();
-
-			frappe.xcall("oly_ai.api.chat.send_message", { session_name: sid, message: q })
-				.then((r) => {
-					if (r.session_title) $topTitle.text(r.session_title);
-					$(`#${lid}`).replaceWith(build_ai_msg(r));
-					wire_copy();
-					scroll_bottom();
-					is_sending = false;
-					$send.prop("disabled", false).removeClass("sending");
-					$input.focus();
-					load_sessions();
-				})
-				.catch((err) => {
-					$(`#${lid}`).replaceWith(`<div class="ai-cm ai-cm-ai"><div class="ai-cm-avatar ai-cm-avatar-err">!</div><div class="ai-cm-bubble ai-cm-error">${err.message || "Something went wrong"}</div></div>`);
-					is_sending = false;
-					$send.prop("disabled", false).removeClass("sending");
-				});
-		}
-
-		if (!current_session) {
-			frappe.xcall("oly_ai.api.chat.create_session", { title: q.substring(0, 60) }).then((s) => {
-				current_session = s.name;
-				do_send(s.name);
-			});
-		} else {
-			do_send(current_session);
-		}
-	}
-
-	// ── Render message ──
-	function render_msg(role, content, meta) {
-		if (role === "user") {
-			$msgs.append(`<div class="ai-cm ai-cm-user"><div class="ai-cm-bubble">${frappe.utils.escape_html(content)}</div><div class="ai-cm-avatar ai-cm-avatar-user">${user_initial}</div></div>`);
-		} else {
-			$msgs.append(build_ai_msg_from_data(content, meta));
-			wire_copy();
-		}
-	}
-
-	function build_ai_msg(r) {
-		let src = "";
-		if (r.sources && r.sources.length) {
-			src = `<div class="ai-cm-sources">${r.sources.map(s => `<a href="/app/${frappe.router.slug(s.doctype)}/${s.name}" class="ai-cm-src-link">${s.doctype}: ${s.name}</a>`).join(" · ")}</div>`;
-		}
-		const meta = [r.model, r.cost ? `$${r.cost.toFixed(4)}` : "", r.response_time ? `${r.response_time}s` : ""].filter(Boolean).join(" · ");
-		return `<div class="ai-cm ai-cm-ai">
-			<div class="ai-cm-avatar ai-cm-avatar-ai">${ICONS.ai}</div>
-			<div class="ai-cm-bubble">
-				<div class="ai-cm-content">${oly_ai.render_markdown(r.content)}</div>
-				${src}
-				<div class="ai-cm-footer">
-					<button class="ai-cm-copy" data-content="${frappe.utils.escape_html(r.content)}">${ICONS.copy}<span>Copy</span></button>
-					${meta ? `<span class="ai-cm-meta">${meta}</span>` : ""}
-				</div>
-			</div>
-		</div>`;
-	}
-
-	function build_ai_msg_from_data(content, meta) {
-		const m = [meta && meta.model ? meta.model : "", meta && meta.cost ? `$${parseFloat(meta.cost).toFixed(4)}` : ""].filter(Boolean).join(" · ");
-		return `<div class="ai-cm ai-cm-ai">
-			<div class="ai-cm-avatar ai-cm-avatar-ai">${ICONS.ai}</div>
-			<div class="ai-cm-bubble">
-				<div class="ai-cm-content">${oly_ai.render_markdown(content)}</div>
-				<div class="ai-cm-footer">
-					<button class="ai-cm-copy" data-content="${frappe.utils.escape_html(content)}">${ICONS.copy}<span>Copy</span></button>
-					${m ? `<span class="ai-cm-meta">${m}</span>` : ""}
-				</div>
-			</div>
-		</div>`;
-	}
-
-	function wire_copy() {
-		$msgs.find(".ai-cm-copy").off("click").on("click", function () {
-			frappe.utils.copy_to_clipboard($(this).data("content"));
-			const $b = $(this);
-			$b.html(`${ICONS.check}<span>Copied</span>`);
-			setTimeout(() => $b.html(`${ICONS.copy}<span>Copy</span>`), 2000);
-		});
-	}
-
-	function wire_suggestions() {
-		$msgs.find(".ai-cw-chip").off("click").on("click", function () {
-			$input.val($(this).data("q"));
-			send_message();
-		});
-	}
-
-	function scroll_bottom() {
-		setTimeout(() => { const el = $msgs[0]; if (el) el.scrollTop = el.scrollHeight; }, 80);
-	}
-
-	// ── Events ──
-	$send.on("click", send_message);
-	$input.on("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send_message(); } });
-	$input.on("input", function () {
-		this.style.height = "auto";
-		this.style.height = Math.min(this.scrollHeight, 150) + "px";
-		$send.prop("disabled", !this.value.trim());
-	});
-	$("#chat-search").on("input", frappe.utils.debounce(function () { load_sessions($(this).val()); }, 300));
-
-	// ── Init ──
-	wire_suggestions();
-	load_sessions();
-	$input.focus();
+// ── Init ──
+show_welcome();
+load_sessions();
+$input.focus();
 };
