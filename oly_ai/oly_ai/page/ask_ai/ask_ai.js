@@ -128,7 +128,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     fp_right = Math.max(0, Math.floor(window.innerWidth - rect.right)) + 'px';
   }
   page.main.html(
-    '<div class="oly-fp" id="oly-fp" style="position:fixed;top:' + navbar_h + 'px;left:' + fp_left + ';right:' + fp_right + ';bottom:0;display:flex;overflow:hidden;font-family:var(--font-stack);color:var(--text-color);background:var(--bg-color);z-index:100;border-radius:' + (is_full_width ? '0' : '0 0 0 0') + ';">' +
+    '<div class="oly-fp" id="oly-fp" style="position:fixed;top:' + navbar_h + 'px;left:' + fp_left + ';right:' + fp_right + ';bottom:0;display:flex;overflow:hidden;font-family:var(--font-stack);color:var(--text-color);background:var(--bg-color);z-index:100;">' +
 
     /* Sidebar */
     '<div class="oly-fp-sidebar" id="oly-fp-sidebar" style="width:260px;min-width:260px;background:var(--card-bg);border-right:1px solid var(--dark-border-color);display:flex;flex-direction:column;overflow:hidden;">' +
