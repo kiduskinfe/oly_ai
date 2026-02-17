@@ -95,12 +95,16 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
 
   // ── Models ──
   var available_models = [
-    { value: 'gpt-4o-mini', label: 'GPT-4o Mini', group: 'Fast' },
-    { value: 'gpt-4o', label: 'GPT-4o', group: 'Advanced' },
-    { value: 'gpt-4.1', label: 'GPT-4.1', group: 'Advanced' },
-    { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini', group: 'Fast' },
     { value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano', group: 'Fast' },
-    { value: 'o4-mini', label: 'o4-mini (Reasoning)', group: 'Reasoning' },
+    { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini', group: 'Fast' },
+    { value: 'gpt-4o-mini', label: 'GPT-4o Mini', group: 'Fast' },
+    { value: 'gpt-4.1', label: 'GPT-4.1', group: 'Advanced' },
+    { value: 'gpt-4o', label: 'GPT-4o', group: 'Advanced' },
+    { value: 'o4-mini', label: 'o4-mini', group: 'Reasoning' },
+    { value: 'o3-mini', label: 'o3-mini', group: 'Reasoning' },
+    { value: 'o3', label: 'o3', group: 'Reasoning' },
+    { value: 'o1-mini', label: 'o1-mini', group: 'Reasoning' },
+    { value: 'o1', label: 'o1', group: 'Reasoning' },
   ];
   var current_model = 'gpt-4o-mini';
   var current_mode = 'ask'; // ask | agent | execute
@@ -173,6 +177,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         '<div style="flex:1;"></div>' +
         '<div class="oly-fp-mode-sel" id="fp-mode-sel">' +
           '<button class="oly-fp-mode active" data-mode="ask">' + __("Ask") + '</button>' +
+          '<button class="oly-fp-mode" data-mode="research">' + __("Research") + '</button>' +
           '<button class="oly-fp-mode" data-mode="agent">' + __("Agent") + '</button>' +
           '<button class="oly-fp-mode" data-mode="execute">' + __("Execute") + '</button>' +
         '</div>' +
@@ -563,6 +568,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     current_mode = $(this).data("mode");
     var placeholders = {
       ask: __("Message AI..."),
+      research: __("What should I research in depth?"),
       agent: __("Describe what you need help with..."),
       execute: __("What action should I execute?"),
     };
