@@ -2,11 +2,62 @@
 # Chat API — CRUD operations and messaging for AI Chat Sessions
 # All endpoints are user-scoped: each user can only access their own chats.
 
+import base64
+import json
+import mimetypes
+import os
+
 import frappe
 from frappe import _
 from oly_ai.core.provider import LLMProvider
 from oly_ai.core.cache import get_cached_response, set_cached_response
 from oly_ai.core.cost_tracker import check_budget, track_usage
+
+
+# Image extensions that can be sent to vision-capable models
+_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+
+def _file_url_to_base64(file_url):
+	"""Convert a Frappe file URL to a base64 data URI for the vision API."""
+	try:
+		# Resolve the actual file path on disk
+		if file_url.startswith("/private/files/"):
+			fpath = frappe.get_site_path(file_url.lstrip("/"))
+		elif file_url.startswith("/files/"):
+			fpath = frappe.get_site_path("public", file_url.lstrip("/"))
+		else:
+			return None
+
+		if not os.path.exists(fpath):
+			return None
+
+		ext = os.path.splitext(fpath)[1].lower()
+		if ext not in _IMAGE_EXTS:
+			return None
+
+		mime = mimetypes.guess_type(fpath)[0] or "image/png"
+		with open(fpath, "rb") as f:
+			b64 = base64.b64encode(f.read()).decode("utf-8")
+		return f"data:{mime};base64,{b64}"
+	except Exception:
+		return None
+
+
+def _build_multipart_content(text, file_urls):
+	"""Build an OpenAI-style multipart content array with text + images.
+
+	Returns a list like:
+	  [{"type":"text","text":"..."}, {"type":"image_url","image_url":{"url":"data:..."}}]
+	If no images could be resolved, returns the plain text string.
+	"""
+	parts = [{"type": "text", "text": text}]
+	had_image = False
+	for url in file_urls:
+		data_uri = _file_url_to_base64(url)
+		if data_uri:
+			parts.append({"type": "image_url", "image_url": {"url": data_uri, "detail": "auto"}})
+			had_image = True
+	return parts if had_image else text
 
 
 @frappe.whitelist()
@@ -100,12 +151,14 @@ def get_messages(session_name):
 
 
 @frappe.whitelist()
-def send_message(session_name, message):
+def send_message(session_name, message, model=None, file_urls=None):
 	"""Send a user message and get AI response. Appends both to the session.
 
 	Args:
 		session_name: AI Chat Session name
 		message: User's message text
+		model: (optional) Model name override, e.g. "gpt-4o"
+		file_urls: (optional) JSON-encoded list of Frappe file URLs for vision
 
 	Returns:
 		dict: {"content", "model", "cost", "tokens", "response_time", "sources"}
@@ -178,7 +231,25 @@ Rules:
 		})
 	llm_messages.extend(conversation)
 
-	model = settings.default_model
+	# Resolve file uploads for vision
+	parsed_files = []
+	if file_urls:
+		try:
+			parsed_files = json.loads(file_urls) if isinstance(file_urls, str) else file_urls
+		except Exception:
+			parsed_files = []
+
+	# If images are attached, replace the last user message content with multipart
+	if parsed_files:
+		last_user_content = _build_multipart_content(message, parsed_files)
+		# Replace the last user message in llm_messages
+		for i in range(len(llm_messages) - 1, -1, -1):
+			if llm_messages[i].get("role") == "user":
+				llm_messages[i]["content"] = last_user_content
+				break
+
+	# Determine model: use per-request override, else session/settings default
+	model = model or settings.default_model
 
 	try:
 		provider = LLMProvider(settings)
