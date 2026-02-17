@@ -80,6 +80,22 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       '.oly-action-card .btn-reject:hover{background:var(--red-50);}',
       '[data-theme="dark"] .oly-action-card{background:var(--gray-800);border-color:var(--gray-600);}',
       '[data-theme="dark"] .oly-action-card .oly-action-fields{background:var(--gray-900);}',
+      /* code block enhancements */
+      '.ai-md pre{position:relative;}',
+      '.ai-code-copy{position:absolute;top:6px;right:6px;background:var(--control-bg);border:1px solid var(--dark-border-color);border-radius:6px;padding:3px 8px;font-size:0.7rem;color:var(--text-muted);cursor:pointer;opacity:0;transition:opacity .15s;display:flex;align-items:center;gap:4px;}',
+      '.ai-md pre:hover .ai-code-copy{opacity:1;}',
+      '.ai-code-copy:hover{color:var(--primary-color);border-color:var(--primary-color);}',
+      '.ai-code-lang{position:absolute;top:6px;left:10px;font-size:0.65rem;color:var(--text-light);text-transform:uppercase;letter-spacing:0.5px;}',
+      /* streaming cursor */
+      '.ai-streaming-cursor::after{content:"▊";animation:ai-blink 1s infinite;color:var(--primary-color);}',
+      '@keyframes ai-blink{0%,100%{opacity:1;}50%{opacity:0;}}',
+      /* export button */
+      '.oly-fp-export{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px 8px;border-radius:6px;font-size:0.75rem;display:flex;align-items:center;gap:4px;transition:all .15s;}',
+      '.oly-fp-export:hover{color:var(--primary-color);background:var(--control-bg);}',
+      /* tool call indicator */
+      '.ai-tool-indicator{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--control-bg);border:1px solid var(--dark-border-color);border-radius:8px;font-size:0.8rem;color:var(--text-muted);margin:4px 0;animation:oly-msg-in 0.2s ease;}',
+      '.ai-tool-indicator svg{animation:ai-spin 1s linear infinite;width:14px;height:14px;}',
+      '@keyframes ai-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}',
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -201,6 +217,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
           '<button class="oly-fp-mode" data-mode="execute">' + __("Execute") + '</button>' +
         '</div>' +
         '<select class="oly-fp-model-sel" id="fp-model">' + model_options + '</select>' +
+        '<button class="oly-fp-export" id="fp-export" title="' + __("Export chat") + '"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' + __("Export") + '</button>' +
       '</div>' +
       /* Messages */
       '<div id="fp-msgs" style="flex:1;overflow-y:auto;padding:24px 16px;"></div>' +
@@ -464,6 +481,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       $b.html(I.check + " Copied");
       setTimeout(function () { $b.html(I.copy + " Copy"); }, 2000);
     });
+    enhance_code_blocks();
   }
 
   function scroll_bottom() {
@@ -564,7 +582,9 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     });
   }
 
-  // ── Send ──
+  // ── Send (with streaming support) ──
+  var stream_task_id = null;
+
   function send_message() {
     var q = $input.val().trim();
     if (!q || sending) return;
@@ -605,7 +625,8 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
 
       var file_urls = files_to_send.map(function (f) { return f.file_url; });
 
-      frappe.xcall("oly_ai.api.chat.send_message", {
+      // Try streaming first, fall back to sync
+      frappe.xcall("oly_ai.api.stream.send_message_stream", {
         session_name: sid,
         message: q,
         model: sel_model,
@@ -613,25 +634,45 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         file_urls: file_urls.length ? JSON.stringify(file_urls) : null,
       })
         .then(function (r) {
-          $("#" + lid).closest('div[style*="max-width"]').remove();
-          append_ai_msg(r.content, r);
-          // Render approval cards if pending actions exist
-          if (r.pending_actions && r.pending_actions.length) {
-            render_action_cards(r.pending_actions);
-          }
-          scroll_bottom();
-          sending = false;
-          $input.focus();
-          load_sessions();
-        })
-        .catch(function (err) {
+          stream_task_id = r.task_id;
+          // Replace typing indicator with empty streaming container
           $("#" + lid).closest('div[style*="max-width"]').html(
             '<div style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start;">' +
-              '<div style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--red-100);color:var(--red-600);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">!</div>' +
-              '<div style="flex:1;color:var(--red-600);font-size:0.9rem;">' + (err.message || __("Something went wrong")) + '</div>' +
+              '<div class="oly-fp-ai-avatar" style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + I.sparkles + '</div>' +
+              '<div id="stream-content-' + r.task_id + '" class="ai-streaming-cursor" style="flex:1;min-width:0;"></div>' +
             '</div>'
           );
-          sending = false;
+          scroll_bottom();
+        })
+        .catch(function () {
+          // Fallback to non-streaming API
+          frappe.xcall("oly_ai.api.chat.send_message", {
+            session_name: sid,
+            message: q,
+            model: sel_model,
+            mode: current_mode,
+            file_urls: file_urls.length ? JSON.stringify(file_urls) : null,
+          })
+            .then(function (r) {
+              $("#" + lid).closest('div[style*="max-width"]').remove();
+              append_ai_msg(r.content, r);
+              if (r.pending_actions && r.pending_actions.length) {
+                render_action_cards(r.pending_actions);
+              }
+              scroll_bottom();
+              sending = false;
+              $input.focus();
+              load_sessions();
+            })
+            .catch(function (err) {
+              $("#" + lid).closest('div[style*="max-width"]').html(
+                '<div style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start;">' +
+                  '<div style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--red-100);color:var(--red-600);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">!</div>' +
+                  '<div style="flex:1;color:var(--red-600);font-size:0.9rem;">' + (err.message || __("Something went wrong")) + '</div>' +
+                '</div>'
+              );
+              sending = false;
+            });
         });
     };
 
@@ -646,6 +687,141 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     } else {
       fire(current_session);
     }
+  }
+
+  // ── Realtime event listeners for streaming ──
+  var stream_buffer = {};
+
+  frappe.realtime.on("ai_chunk", function (data) {
+    if (!data || !data.task_id) return;
+    var $el = $("#stream-content-" + data.task_id);
+    if (!$el.length) return;
+    if (!stream_buffer[data.task_id]) stream_buffer[data.task_id] = "";
+    stream_buffer[data.task_id] += data.chunk;
+    $el.html(oly_ai.render_markdown(stream_buffer[data.task_id]));
+    scroll_bottom();
+  });
+
+  frappe.realtime.on("ai_tool_call", function (data) {
+    if (!data || !data.task_id) return;
+    var $el = $("#stream-content-" + data.task_id);
+    if (!$el.length) return;
+    var tool_html = '<div class="ai-tool-indicator"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>Using tool: <strong>' + frappe.utils.escape_html(data.tool_name) + '</strong></div>';
+    $el.append(tool_html);
+    scroll_bottom();
+  });
+
+  frappe.realtime.on("ai_done", function (data) {
+    if (!data || !data.task_id) return;
+    var $el = $("#stream-content-" + data.task_id);
+    if (!$el.length) return;
+    $el.removeClass("ai-streaming-cursor");
+
+    // Replace with final rendered content
+    var content = data.content || stream_buffer[data.task_id] || "";
+    var parts = [r_model(data), r_cost(data)].filter(Boolean).join(" &middot; ");
+    $el.html(
+      oly_ai.render_markdown(content) +
+      '<div style="display:flex;align-items:center;gap:12px;margin-top:6px;font-size:0.75rem;">' +
+        '<span class="oly-ai-copy-btn" data-text="' + frappe.utils.escape_html(content) + '" style="cursor:pointer;color:var(--text-muted);display:flex;align-items:center;gap:4px;transition:color .15s;">' + I.copy + ' Copy</span>' +
+        (parts ? '<span style="color:var(--text-light);">' + parts + '</span>' : '') +
+      '</div>'
+    );
+    wire_copy();
+    enhance_code_blocks();
+
+    // Handle pending actions
+    if (data.pending_actions && data.pending_actions.length) {
+      render_action_cards(data.pending_actions);
+    }
+
+    // Update title
+    if (data.session_title) {
+      $title.text(data.session_title);
+    }
+
+    delete stream_buffer[data.task_id];
+    stream_task_id = null;
+    sending = false;
+    scroll_bottom();
+    $input.focus();
+    load_sessions();
+  });
+
+  frappe.realtime.on("ai_error", function (data) {
+    if (!data || !data.task_id) return;
+    var $el = $("#stream-content-" + data.task_id);
+    if ($el.length) {
+      $el.removeClass("ai-streaming-cursor").html(
+        '<div style="color:var(--red-600);font-size:0.9rem;padding:8px 12px;background:rgba(239,68,68,0.08);border-radius:8px;">' +
+        frappe.utils.escape_html(data.error || __("Something went wrong")) + '</div>'
+      );
+    }
+    delete stream_buffer[data.task_id];
+    stream_task_id = null;
+    sending = false;
+  });
+
+  // ── Code block enhancements ──
+  function enhance_code_blocks() {
+    $msgs.find('.ai-md pre').each(function () {
+      if ($(this).find('.ai-code-copy').length) return; // already enhanced
+      var $pre = $(this);
+      var $code = $pre.find('code');
+      var lang = '';
+      if ($code.length) {
+        var cls = $code.attr('class') || '';
+        var m = cls.match(/language-(\w+)/);
+        if (m) lang = m[1];
+      }
+      if (lang) {
+        $pre.prepend('<span class="ai-code-lang">' + lang + '</span>');
+      }
+      $pre.append('<button class="ai-code-copy">' + I.copy + ' Copy</button>');
+    });
+    $msgs.find('.ai-code-copy').off('click').on('click', function (e) {
+      e.stopPropagation();
+      var code = $(this).closest('pre').find('code').text() || $(this).closest('pre').text();
+      frappe.utils.copy_to_clipboard(code);
+      var $b = $(this);
+      $b.html(I.check + ' Copied');
+      setTimeout(function () { $b.html(I.copy + ' Copy'); }, 2000);
+    });
+  }
+
+  // ── Export chat to markdown ──
+  function export_chat() {
+    if (!current_session) {
+      frappe.show_alert({ message: __("No active conversation to export"), indicator: "orange" });
+      return;
+    }
+    frappe.xcall("oly_ai.api.chat.get_messages", { session_name: current_session }).then(function (msgs) {
+      if (!msgs || !msgs.length) {
+        frappe.show_alert({ message: __("No messages to export"), indicator: "orange" });
+        return;
+      }
+      var s = sessions.find(function (x) { return x.name === current_session; });
+      var title = s ? s.title : "Chat";
+      var md = "# " + title + "\n\n";
+      md += "_Exported: " + frappe.datetime.now_datetime() + "_\n\n---\n\n";
+      msgs.forEach(function (m) {
+        if (m.role === "user") {
+          md += "**You:** " + m.content + "\n\n";
+        } else {
+          md += "**AI";
+          if (m.model) md += " (" + m.model + ")";
+          md += ":** " + m.content + "\n\n";
+        }
+      });
+      var blob = new Blob([md], { type: "text/markdown" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = title.replace(/[^a-zA-Z0-9]/g, "_") + ".md";
+      a.click();
+      URL.revokeObjectURL(url);
+      frappe.show_alert({ message: __("Chat exported"), indicator: "green" });
+    });
   }
 
   // ── Events ──
@@ -701,6 +877,33 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       execute: __("What action should I execute?"),
     };
     $input.attr("placeholder", placeholders[current_mode] || placeholders.ask);
+  });
+  // Export button
+  $("#fp-export").on("click", export_chat);
+
+  // ── Keyboard shortcuts ──
+  $(document).on("keydown.oly_ai_page", function (e) {
+    // Ctrl+/ or Cmd+/ — focus the input
+    if ((e.ctrlKey || e.metaKey) && e.key === "/") {
+      e.preventDefault();
+      $input.focus();
+    }
+    // Ctrl+Shift+N or Cmd+Shift+N — new chat
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "N" || e.key === "n")) {
+      e.preventDefault();
+      new_chat();
+    }
+    // Ctrl+Shift+E or Cmd+Shift+E — export
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "E" || e.key === "e")) {
+      e.preventDefault();
+      export_chat();
+    }
+    // Ctrl+B or Cmd+B — toggle sidebar
+    if ((e.ctrlKey || e.metaKey) && (e.key === "b" || e.key === "B") && !e.shiftKey) {
+      e.preventDefault();
+      sidebar_open = !sidebar_open;
+      $fp.toggleClass("fp-sidebar-closed", !sidebar_open);
+    }
   });
 
   // Respond to Toggle Full Width in real-time — re-align with navbar container

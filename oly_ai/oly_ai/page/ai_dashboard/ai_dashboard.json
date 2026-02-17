@@ -1,0 +1,20 @@
+{
+ "content": null,
+ "creation": "2026-02-17 00:00:00.000000",
+ "doctype": "Page",
+ "icon": "chart-line",
+ "modified": "2026-02-17 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Oly AI",
+ "name": "ai-dashboard",
+ "owner": "Administrator",
+ "page_name": "ai-dashboard",
+ "roles": [
+  {
+   "role": "System Manager"
+  }
+ ],
+ "standard": "Yes",
+ "system_page": 0,
+ "title": "AI Dashboard"
+}

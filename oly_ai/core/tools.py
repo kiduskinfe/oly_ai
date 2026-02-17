@@ -221,18 +221,26 @@ def execute_tool(tool_name, arguments, user=None):
 	}
 
 	handler = tool_map.get(tool_name)
-	if not handler:
-		return json.dumps({"error": f"Unknown tool: {tool_name}"})
+	if handler:
+		try:
+			result = handler(arguments, user)
+			return json.dumps(result, default=str, ensure_ascii=False)
+		except frappe.PermissionError:
+			return json.dumps({"error": f"Permission denied: you don't have access to this data"})
+		except frappe.DoesNotExistError:
+			return json.dumps({"error": f"Document not found"})
+		except Exception as e:
+			return json.dumps({"error": str(e)})
 
+	# Check custom tools
 	try:
-		result = handler(arguments, user)
-		return json.dumps(result, default=str, ensure_ascii=False)
-	except frappe.PermissionError:
-		return json.dumps({"error": f"Permission denied: you don't have access to this data"})
-	except frappe.DoesNotExistError:
-		return json.dumps({"error": f"Document not found"})
+		result = _execute_custom_tool(tool_name, arguments, user)
+		if result is not None:
+			return json.dumps(result, default=str, ensure_ascii=False)
 	except Exception as e:
 		return json.dumps({"error": str(e)})
+
+	return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
 
 def _tool_search_documents(args, user):
@@ -511,4 +519,73 @@ def get_available_tools(user=None, mode="ask"):
 				if tool["function"]["name"] in write_tools:
 					available.append(tool)
 
+	# Add custom tools
+	available.extend(_get_custom_tools(user))
+
 	return available
+
+
+def _get_custom_tools(user=None):
+	"""Load enabled custom tools from AI Custom Tool DocType."""
+	user = user or frappe.session.user
+	try:
+		custom_tools = frappe.get_all(
+			"AI Custom Tool",
+			filters={"enabled": 1},
+			fields=["name", "tool_name", "allowed_roles"],
+		)
+	except Exception:
+		return []
+
+	result = []
+	user_roles = frappe.get_roles(user)
+
+	for ct in custom_tools:
+		# Role check
+		if ct.allowed_roles:
+			allowed = [r.strip() for r in ct.allowed_roles.split(",") if r.strip()]
+			if allowed and not any(r in user_roles for r in allowed):
+				continue
+
+		try:
+			doc = frappe.get_cached_doc("AI Custom Tool", ct.name)
+			result.append(doc.get_tool_definition())
+		except Exception:
+			pass
+
+	return result
+
+
+def _execute_custom_tool(tool_name, arguments, user):
+	"""Execute a custom tool by name. Returns None if not found."""
+	try:
+		ct_name = frappe.db.get_value(
+			"AI Custom Tool",
+			{"tool_name": tool_name, "enabled": 1},
+			"name",
+		)
+		if not ct_name:
+			return None
+
+		doc = frappe.get_doc("AI Custom Tool", ct_name)
+
+		# Approval flow
+		if doc.require_approval:
+			action = frappe.new_doc("AI Action Request")
+			action.status = "Pending"
+			action.action_type = f"Custom Tool: {doc.label}"
+			action.requested_by = user
+			action.action_summary = f"Run custom tool '{doc.label}' with args: {json.dumps(arguments)[:200]}"
+			action.action_data = json.dumps({"tool_name": tool_name, "arguments": arguments})
+			action.flags.ignore_permissions = True
+			action.insert()
+			frappe.db.commit()
+			return {
+				"status": "pending_approval",
+				"action_id": action.name,
+				"message": f"Custom tool '{doc.label}' requires approval before execution.",
+			}
+
+		return doc.execute(arguments, user)
+	except Exception:
+		return None

@@ -16,6 +16,23 @@ class AIActionRequest(Document):
 			except json.JSONDecodeError:
 				frappe.throw(_("Action Data must be valid JSON"))
 
+	def after_insert(self):
+		"""Send notification when action request is created."""
+		try:
+			from oly_ai.core.notifications import notify_action_request
+			notify_action_request(self)
+		except Exception:
+			pass
+
+	def on_update(self):
+		"""Send notification when status changes."""
+		if self.has_value_changed("status") and self.status in ("Executed", "Rejected", "Failed"):
+			try:
+				from oly_ai.core.notifications import notify_action_result
+				notify_action_result(self, self.status)
+			except Exception:
+				pass
+
 	def execute(self):
 		"""Execute the approved action."""
 		if self.status != "Approved":

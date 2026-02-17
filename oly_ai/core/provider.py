@@ -175,6 +175,97 @@ class LLMProvider:
 		except Exception as e:
 			frappe.throw(f"Anthropic request failed: {str(e)}")
 
+	def chat_stream(self, messages, model=None, max_tokens=None, temperature=None, tools=None):
+		"""Stream chat completion, yielding chunks as they arrive.
+
+		Yields dicts:
+		  {"type": "chunk", "content": "..."}     — text content chunk
+		  {"type": "tool_call_delta", "delta": {}} — tool call delta (if function calling)
+		  {"type": "usage", "usage": {...}}        — usage stats from final chunk
+
+		Args:
+			messages: list of message dicts
+			model: override model
+			max_tokens: override max tokens
+			temperature: override temperature
+			tools: tool definitions for function calling
+		"""
+		model = model or self.default_model
+		max_tokens = max_tokens or self.max_tokens
+		temperature = temperature if temperature is not None else self.temperature
+
+		url = f"{self.base_url.rstrip('/')}/chat/completions"
+
+		headers = {
+			"Content-Type": "application/json",
+			"Authorization": f"Bearer {self.api_key}",
+		}
+
+		payload = {
+			"model": model,
+			"messages": messages,
+			"max_tokens": max_tokens,
+			"temperature": temperature,
+			"top_p": self.top_p,
+			"stream": True,
+			"stream_options": {"include_usage": True},
+		}
+
+		if tools:
+			payload["tools"] = tools
+			payload["tool_choice"] = "auto"
+
+		try:
+			response = requests.post(
+				url, headers=headers, json=payload,
+				timeout=self.timeout, stream=True,
+			)
+			response.raise_for_status()
+
+			for line in response.iter_lines():
+				if not line:
+					continue
+				line_str = line.decode("utf-8")
+				if not line_str.startswith("data: "):
+					continue
+				data_str = line_str[6:]
+				if data_str.strip() == "[DONE]":
+					break
+
+				try:
+					chunk = json.loads(data_str)
+				except json.JSONDecodeError:
+					continue
+
+				# Usage in final chunk
+				if chunk.get("usage"):
+					yield {"type": "usage", "usage": chunk["usage"]}
+					continue
+
+				choices = chunk.get("choices", [])
+				if not choices:
+					continue
+
+				delta = choices[0].get("delta", {})
+
+				# Text content
+				if delta.get("content"):
+					yield {"type": "chunk", "content": delta["content"]}
+
+				# Tool calls
+				if delta.get("tool_calls"):
+					yield {"type": "tool_call_delta", "delta": delta["tool_calls"]}
+
+		except requests.exceptions.Timeout:
+			raise Exception(f"AI request timed out after {self.timeout}s")
+		except requests.exceptions.HTTPError as e:
+			error_detail = ""
+			try:
+				error_detail = e.response.json().get("error", {}).get("message", str(e))
+			except Exception:
+				error_detail = str(e)
+			raise Exception(f"AI API error: {error_detail}")
+
 	def get_embeddings(self, texts, model=None):
 		"""Get embeddings for a list of texts. Returns list of embedding vectors.
 

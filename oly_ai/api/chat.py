@@ -205,10 +205,15 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 	# Add user message to session
 	session.append("messages", {"role": "user", "content": message})
 
-	# Build conversation history for context (last 20 messages max)
-	conversation = []
-	for msg in session.messages[-20:]:
-		conversation.append({"role": msg.role, "content": msg.content})
+	# Build conversation history for context using memory module
+	try:
+		from oly_ai.core.memory import get_session_context
+		conversation = get_session_context(session)
+	except Exception:
+		# Fallback: use last 20 messages directly
+		conversation = []
+		for msg in session.messages[-20:]:
+			conversation.append({"role": msg.role, "content": msg.content})
 
 	# System prompt — varies by mode
 	mode = mode or "ask"
@@ -479,6 +484,13 @@ Rules:
 		session.flags.ignore_permissions = True
 		session.save()
 		frappe.db.commit()
+
+		# Summarize session if it's getting long
+		try:
+			from oly_ai.core.memory import maybe_summarize_session
+			maybe_summarize_session(session)
+		except Exception:
+			pass
 
 		# Audit log
 		try:

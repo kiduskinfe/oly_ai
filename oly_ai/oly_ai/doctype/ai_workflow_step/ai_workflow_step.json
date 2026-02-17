@@ -1,0 +1,99 @@
+{
+ "actions": [],
+ "creation": "2026-02-17 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "step_type",
+  "prompt",
+  "column_break_step",
+  "target_doctype",
+  "target_filters",
+  "model",
+  "output_variable",
+  "result_section",
+  "result",
+  "status"
+ ],
+ "fields": [
+  {
+   "fieldname": "step_type",
+   "fieldtype": "Select",
+   "label": "Step Type",
+   "options": "AI Query\nData Query\nData Aggregation\nSend Email\nCreate Document\nUpdate Document\nConditional\nDelay",
+   "default": "AI Query",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "prompt",
+   "fieldtype": "Small Text",
+   "label": "Prompt / Instructions",
+   "description": "For AI Query: the prompt. For Data Query: filters as JSON. For Email: subject line. Use {{prev_result}} to reference previous step output.",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_step",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "target_doctype",
+   "fieldtype": "Link",
+   "label": "Target DocType",
+   "options": "DocType",
+   "description": "For Data Query, Create/Update Document steps"
+  },
+  {
+   "fieldname": "target_filters",
+   "fieldtype": "Code",
+   "label": "Filters / Data (JSON)",
+   "options": "JSON",
+   "description": "JSON filters for data query, or field values for create/update"
+  },
+  {
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Model Override",
+   "description": "Override the default model for this step"
+  },
+  {
+   "fieldname": "output_variable",
+   "fieldtype": "Data",
+   "label": "Output Variable",
+   "description": "Name to reference this step's output in later steps, e.g. 'step1_result'"
+  },
+  {
+   "fieldname": "result_section",
+   "fieldtype": "Section Break",
+   "label": "Result",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "result",
+   "fieldtype": "Long Text",
+   "label": "Result",
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "\nPending\nRunning\nCompleted\nFailed\nSkipped",
+   "read_only": 1,
+   "in_list_view": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-02-17 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Oly AI",
+ "name": "AI Workflow Step",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
+}

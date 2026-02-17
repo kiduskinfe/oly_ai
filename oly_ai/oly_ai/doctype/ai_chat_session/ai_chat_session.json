@@ -11,6 +11,8 @@
   "model",
   "total_tokens",
   "total_cost",
+  "memory_section",
+  "conversation_summary",
   "messages_section",
   "messages"
  ],
@@ -53,6 +55,19 @@
    "fieldtype": "Currency",
    "label": "Total Cost (USD)",
    "precision": 6,
+   "read_only": 1
+  },
+  {
+   "fieldname": "memory_section",
+   "fieldtype": "Section Break",
+   "label": "Memory",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "conversation_summary",
+   "fieldtype": "Long Text",
+   "label": "Conversation Summary",
+   "description": "Auto-generated summary of older messages for context",
    "read_only": 1
   },
   {

@@ -40,6 +40,7 @@ doctype_js = {
 scheduler_events = {
     "daily": [
         "oly_ai.core.cost_tracker.reset_daily_counters",
+        "oly_ai.core.notifications.send_daily_digest",
     ],
     "daily_long": [
         "oly_ai.api.train.scheduled_reindex",
@@ -47,6 +48,11 @@ scheduler_events = {
     "weekly": [
         "oly_ai.core.cost_tracker.generate_weekly_usage_report",
     ],
+    "cron": {
+        "*/15 * * * *": [
+            "oly_ai.core.workflow_engine.run_scheduled_workflows",
+        ],
+    },
 }
 
 # Auto-reindex hooks — triggered on document changes

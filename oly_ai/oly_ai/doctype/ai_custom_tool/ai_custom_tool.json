@@ -1,0 +1,149 @@
+{
+ "actions": [],
+ "autoname": "field:tool_name",
+ "creation": "2026-02-17 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "tool_name",
+  "label",
+  "description",
+  "section_parameters",
+  "parameters_json",
+  "section_handler",
+  "handler_type",
+  "python_module",
+  "python_function",
+  "server_script",
+  "section_config",
+  "require_approval",
+  "allowed_roles"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "tool_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Tool Name",
+   "reqd": 1,
+   "unique": 1,
+   "description": "Function name in snake_case, e.g. get_weather, calculate_tax"
+  },
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Label",
+   "reqd": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description",
+   "reqd": 1,
+   "description": "Description shown to the AI model so it knows when to use this tool"
+  },
+  {
+   "fieldname": "section_parameters",
+   "fieldtype": "Section Break",
+   "label": "Parameters",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "parameters_json",
+   "fieldtype": "Code",
+   "label": "Parameters (JSON Schema)",
+   "options": "JSON",
+   "description": "OpenAI function parameters JSON schema. Example: {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}"
+  },
+  {
+   "fieldname": "section_handler",
+   "fieldtype": "Section Break",
+   "label": "Handler"
+  },
+  {
+   "default": "Python Module",
+   "fieldname": "handler_type",
+   "fieldtype": "Select",
+   "label": "Handler Type",
+   "options": "Python Module\nServer Script",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.handler_type=='Python Module'",
+   "fieldname": "python_module",
+   "fieldtype": "Data",
+   "label": "Python Module Path",
+   "description": "Dotted module path, e.g. oly_ai.custom_tools.weather"
+  },
+  {
+   "depends_on": "eval:doc.handler_type=='Python Module'",
+   "fieldname": "python_function",
+   "fieldtype": "Data",
+   "label": "Function Name",
+   "description": "Function name in the module, e.g. get_weather"
+  },
+  {
+   "depends_on": "eval:doc.handler_type=='Server Script'",
+   "fieldname": "server_script",
+   "fieldtype": "Code",
+   "label": "Server Script",
+   "options": "Python",
+   "description": "Python code to execute. Receives 'args' dict and 'user' string. Must return a result dict."
+  },
+  {
+   "fieldname": "section_config",
+   "fieldtype": "Section Break",
+   "label": "Configuration",
+   "collapsible": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "require_approval",
+   "fieldtype": "Check",
+   "label": "Require Approval",
+   "description": "If checked, tool execution requires user approval before running"
+  },
+  {
+   "fieldname": "allowed_roles",
+   "fieldtype": "Small Text",
+   "label": "Allowed Roles",
+   "description": "Comma-separated list of roles that can use this tool. Leave empty for all users."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-02-17 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Oly AI",
+ "name": "AI Custom Tool",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "label",
+ "track_changes": 1
+}

@@ -266,6 +266,17 @@ oly_ai.Panel = class {
 
     // Setup events
     this.setup_events();
+
+    // Setup streaming listeners
+    this._setup_streaming();
+
+    // Keyboard shortcut: Ctrl+/ to toggle panel
+    $(document).on('keydown.oly_ai_shortcut', function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        me.change_bubble();
+      }
+    });
   }
 
   /** Show the panel — exactly like Chat's show_chat_widget() */
@@ -407,20 +418,31 @@ oly_ai.Panel = class {
       );
       me._scroll();
 
-      frappe.xcall('oly_ai.api.chat.send_message', { session_name: sid, message: q })
+      // Try streaming first, fallback to sync
+      frappe.xcall('oly_ai.api.stream.send_message_stream', { session_name: sid, message: q })
         .then(function (r) {
-          $('#' + lid).replaceWith(me._ai_msg(r));
-          me._wire_copy();
+          me._stream_task = r.task_id;
+          me._stream_buffer = "";
+          $('#' + lid + ' .oly-ai-msg-content').html('<span id="panel-stream-' + r.task_id + '" class="ai-streaming-cursor"></span>');
           me._scroll();
-          me.sending = false;
-          me.$input.focus();
         })
-        .catch(function (err) {
-          $('#' + lid).replaceWith(
-            '<div class="oly-ai-msg oly-ai-msg-ai"><div class="oly-ai-msg-avatar oly-ai-msg-avatar-err">!</div>' +
-            '<div class="oly-ai-msg-content oly-ai-msg-error">' + (err.message || 'Something went wrong') + '</div></div>'
-          );
-          me.sending = false;
+        .catch(function () {
+          // Fallback to non-streaming
+          frappe.xcall('oly_ai.api.chat.send_message', { session_name: sid, message: q })
+            .then(function (r) {
+              $('#' + lid).replaceWith(me._ai_msg(r));
+              me._wire_copy();
+              me._scroll();
+              me.sending = false;
+              me.$input.focus();
+            })
+            .catch(function (err) {
+              $('#' + lid).replaceWith(
+                '<div class="oly-ai-msg oly-ai-msg-ai"><div class="oly-ai-msg-avatar oly-ai-msg-avatar-err">!</div>' +
+                '<div class="oly-ai-msg-content oly-ai-msg-error">' + (err.message || 'Something went wrong') + '</div></div>'
+              );
+              me.sending = false;
+            });
         });
     };
 
@@ -430,6 +452,53 @@ oly_ai.Panel = class {
     } else {
       fire(this.session);
     }
+  }
+
+  _setup_streaming() {
+    var me = this;
+    frappe.realtime.on("ai_chunk", function (data) {
+      if (!data || !me._stream_task || data.task_id !== me._stream_task) return;
+      me._stream_buffer = (me._stream_buffer || "") + data.chunk;
+      var $el = $("#panel-stream-" + data.task_id);
+      if ($el.length) {
+        $el.html(oly_ai.render_markdown(me._stream_buffer));
+        me._scroll();
+      }
+    });
+    frappe.realtime.on("ai_done", function (data) {
+      if (!data || !me._stream_task || data.task_id !== me._stream_task) return;
+      var $el = $("#panel-stream-" + data.task_id);
+      if ($el.length) {
+        $el.removeClass("ai-streaming-cursor");
+        var content = data.content || me._stream_buffer || "";
+        var meta = [data.model, data.cost ? '$' + data.cost.toFixed(4) : ''].filter(Boolean).join(' · ');
+        $el.closest('.oly-ai-msg-content').html(
+          oly_ai.render_markdown(content) +
+          '<div class="oly-ai-msg-footer">' +
+          '<span class="oly-ai-copy-btn" data-text="' + frappe.utils.escape_html(content) + '">' + ICON.copy + ' Copy</span>' +
+          (meta ? '<span class="oly-ai-msg-meta">' + meta + '</span>' : '') +
+          '</div>'
+        );
+        me._wire_copy();
+      }
+      me._stream_task = null;
+      me._stream_buffer = "";
+      me.sending = false;
+      me.$input.focus();
+      me._scroll();
+    });
+    frappe.realtime.on("ai_error", function (data) {
+      if (!data || !me._stream_task || data.task_id !== me._stream_task) return;
+      var $el = $("#panel-stream-" + data.task_id);
+      if ($el.length) {
+        $el.removeClass("ai-streaming-cursor").closest('.oly-ai-msg-content').html(
+          '<div class="oly-ai-msg-error">' + frappe.utils.escape_html(data.error || 'Something went wrong') + '</div>'
+        );
+      }
+      me._stream_task = null;
+      me._stream_buffer = "";
+      me.sending = false;
+    });
   }
 
   _user_msg(text) {
