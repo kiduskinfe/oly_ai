@@ -196,3 +196,59 @@ class LLMProvider:
 			return [item["embedding"] for item in data["data"]]
 		except Exception as e:
 			frappe.throw(f"Embedding request failed: {str(e)}")
+
+	def generate_image(self, prompt, model="dall-e-3", size="1024x1024", quality="standard", n=1):
+		"""Generate an image using OpenAI's DALL-E API.
+
+		Args:
+			prompt: Text description of the image to generate
+			model: Image model (dall-e-3 or dall-e-2)
+			size: Image size (1024x1024, 1024x1792, 1792x1024)
+			quality: Image quality (standard or hd) — dall-e-3 only
+			n: Number of images (1 for dall-e-3, 1-10 for dall-e-2)
+
+		Returns:
+			dict: {
+				"url": str,             # URL of generated image
+				"revised_prompt": str,   # DALL-E 3's revised prompt
+				"model": str,
+				"size": str,
+			}
+		"""
+		url = f"{self.base_url.rstrip('/')}/images/generations"
+
+		headers = {
+			"Content-Type": "application/json",
+			"Authorization": f"Bearer {self.api_key}",
+		}
+
+		payload = {
+			"model": model,
+			"prompt": prompt,
+			"n": n,
+			"size": size,
+		}
+		if model == "dall-e-3":
+			payload["quality"] = quality
+
+		try:
+			response = requests.post(url, headers=headers, json=payload, timeout=120)
+			response.raise_for_status()
+			data = response.json()
+
+			image_data = data["data"][0]
+			return {
+				"url": image_data.get("url", ""),
+				"revised_prompt": image_data.get("revised_prompt", prompt),
+				"model": model,
+				"size": size,
+			}
+		except requests.exceptions.HTTPError as e:
+			error_detail = ""
+			try:
+				error_detail = e.response.json().get("error", {}).get("message", str(e))
+			except Exception:
+				error_detail = str(e)
+			frappe.throw(f"Image generation error: {error_detail}")
+		except Exception as e:
+			frappe.throw(f"Image generation failed: {str(e)}")

@@ -13,6 +13,9 @@ from oly_ai.core.provider import LLMProvider
 from oly_ai.core.cache import get_cached_response, set_cached_response
 from oly_ai.core.cost_tracker import check_budget, track_usage
 
+import re
+import time
+
 
 # Image extensions that can be sent to vision-capable models
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
@@ -360,6 +363,18 @@ Rules:
 	# Determine model: use per-request override, else session/settings default
 	model = model or settings.default_model
 
+	# Auto-detect image generation requests
+	if _is_image_request(message) and not parsed_files:
+		try:
+			# Route to image generation instead of chat
+			img_result = generate_image(session_name, message)
+			return img_result
+		except Exception:
+			# If image generation fails, fall through to normal chat
+			# Reload session since generate_image may have modified it
+			session.reload()
+			pass
+
 	try:
 		provider = LLMProvider(settings)
 		result = provider.chat(llm_messages, model=model)
@@ -446,3 +461,146 @@ def delete_session(session_name):
 	frappe.delete_doc("AI Chat Session", session_name, force=True, ignore_permissions=True)
 	frappe.db.commit()
 	return {"success": True}
+
+
+# ─── Image Generation ─────────────────────────────────────────
+
+# Patterns that indicate the user wants to generate an image
+_IMAGE_GEN_PATTERNS = [
+	r"\b(generate|create|make|draw|design|produce|render)\b.*\b(image|picture|photo|illustration|artwork|logo|icon|banner|poster|graphic|diagram|visual)\b",
+	r"\b(image|picture|photo|illustration|artwork|logo|icon|banner|poster|graphic)\b.*\b(of|for|showing|depicting|with)\b",
+	r"^(generate|create|make|draw|design)\b",
+]
+_IMAGE_GEN_RE = re.compile("|".join(_IMAGE_GEN_PATTERNS), re.IGNORECASE)
+
+
+def _is_image_request(message):
+	"""Detect if the user's message is asking to generate an image."""
+	return bool(_IMAGE_GEN_RE.search(message))
+
+
+def _save_generated_image(image_url, prompt, user):
+	"""Download a generated image from URL and save it as a Frappe File."""
+	import requests as req
+	try:
+		resp = req.get(image_url, timeout=60)
+		resp.raise_for_status()
+
+		# Generate a safe filename
+		slug = re.sub(r'[^a-zA-Z0-9]+', '_', prompt[:40]).strip('_').lower()
+		filename = f"ai_generated_{slug}_{int(time.time())}.png"
+
+		# Save as Frappe File
+		file_doc = frappe.get_doc({
+			"doctype": "File",
+			"file_name": filename,
+			"content": resp.content,
+			"is_private": 0,
+			"folder": "Home",
+		})
+		file_doc.flags.ignore_permissions = True
+		file_doc.save()
+		frappe.db.commit()
+		return file_doc.file_url
+	except Exception:
+		# If saving fails, return the original URL (temporary, expires in ~1hr)
+		return image_url
+
+
+@frappe.whitelist()
+def generate_image(session_name, prompt, size="1024x1024", quality="standard"):
+	"""Generate an image using DALL-E and add it to the chat session.
+
+	Args:
+		session_name: AI Chat Session name
+		prompt: Text description of the image
+		size: Image size (1024x1024, 1024x1792, 1792x1024)
+		quality: standard or hd
+
+	Returns:
+		dict: {"content", "image_url", "revised_prompt", "model", "cost"}
+	"""
+	user = frappe.session.user
+
+	# Verify ownership
+	session_user = frappe.db.get_value("AI Chat Session", session_name, "user")
+	if not session_user:
+		frappe.throw(_("Chat session not found"), frappe.DoesNotExistError)
+	if session_user != user and user != "Administrator":
+		frappe.throw(_("Access denied"), frappe.PermissionError)
+
+	settings = frappe.get_cached_doc("AI Settings")
+	if not settings.is_configured():
+		frappe.throw(_("AI is not configured. Please set up AI Settings."))
+
+	allowed, reason = check_budget(user)
+	if not allowed:
+		frappe.throw(_(reason))
+
+	session = frappe.get_doc("AI Chat Session", session_name)
+
+	# Add user message
+	session.append("messages", {"role": "user", "content": prompt})
+
+	start_time = time.time()
+
+	try:
+		provider = LLMProvider(settings)
+		result = provider.generate_image(
+			prompt=prompt,
+			model="dall-e-3",
+			size=size,
+			quality=quality,
+		)
+
+		response_time = round(time.time() - start_time, 2)
+
+		# Save image to Frappe files so it persists
+		local_url = _save_generated_image(result["url"], prompt, user)
+
+		# Estimate cost (DALL-E 3: ~$0.04 standard, ~$0.08 HD for 1024x1024)
+		cost_map = {
+			"standard": {"1024x1024": 0.04, "1024x1792": 0.08, "1792x1024": 0.08},
+			"hd": {"1024x1024": 0.08, "1024x1792": 0.12, "1792x1024": 0.12},
+		}
+		estimated_cost = cost_map.get(quality, {}).get(size, 0.04)
+
+		# Build response content
+		content = f"Here's the generated image:\n\n![Generated Image]({local_url})\n\n"
+		if result.get("revised_prompt") and result["revised_prompt"] != prompt:
+			content += f"*Refined prompt: {result['revised_prompt']}*"
+
+		# Add AI response to session
+		session.append("messages", {
+			"role": "assistant",
+			"content": content,
+			"model": "dall-e-3",
+			"cost": estimated_cost,
+			"response_time": response_time,
+		})
+
+		session.total_cost = (session.total_cost or 0) + estimated_cost
+
+		if session.title == "New Chat":
+			session.title = prompt[:60] + ("..." if len(prompt) > 60 else "")
+
+		session.flags.ignore_permissions = True
+		session.save()
+		frappe.db.commit()
+
+		return {
+			"content": content,
+			"image_url": local_url,
+			"revised_prompt": result.get("revised_prompt", prompt),
+			"model": "dall-e-3",
+			"cost": estimated_cost,
+			"response_time": response_time,
+			"type": "image",
+			"session_title": session.title,
+		}
+
+	except Exception as e:
+		session.flags.ignore_permissions = True
+		session.save()
+		frappe.db.commit()
+		raise

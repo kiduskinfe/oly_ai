@@ -52,6 +52,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       '.ai-md table{border-collapse:collapse;width:100%;margin:0.6em 0;}',
       '.ai-md th,.ai-md td{border:1px solid var(--dark-border-color);padding:6px 10px;text-align:left;font-size:0.85rem;}',
       '.ai-md th{background:var(--control-bg);font-weight:600;}',
+      '.ai-md img{max-width:100%;max-height:512px;border-radius:12px;border:1px solid var(--border-color);cursor:pointer;margin:8px 0;}',
       '.fp-sidebar-closed .oly-fp-sidebar{display:none !important;}',
       /* Dark mode overrides — only applied when [data-theme="dark"] */
       '[data-theme="dark"] .oly-fp-ai-avatar{background:#e8e8e8 !important;color:#1a1a1a !important;}',
@@ -408,12 +409,23 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
 
   function append_ai_msg(content, meta) {
     var parts = [r_model(meta), r_cost(meta)].filter(Boolean).join(" &middot; ");
+    var is_image = meta && meta.type === "image";
+    var rendered;
+    if (is_image && meta.image_url) {
+      // Render image directly with nice styling
+      rendered = '<div style="margin:8px 0;">' +
+        '<img src="' + meta.image_url + '" style="max-width:100%;max-height:512px;border-radius:12px;border:1px solid var(--border-color);cursor:pointer;" onclick="window.open(this.src,\'_blank\')" />' +
+        '</div>' +
+        (meta.revised_prompt ? '<p style="font-size:0.8rem;color:var(--text-muted);font-style:italic;margin:4px 0 0;">' + frappe.utils.escape_html(meta.revised_prompt) + '</p>' : '');
+    } else {
+      rendered = oly_ai.render_markdown(content);
+    }
     $msgs.append(
       w() +
       '<div style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start;">' +
         '<div class="oly-fp-ai-avatar" style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + I.sparkles + '</div>' +
         '<div style="flex:1;min-width:0;">' +
-          oly_ai.render_markdown(content) +
+          rendered +
           '<div style="display:flex;align-items:center;gap:12px;margin-top:6px;font-size:0.75rem;">' +
             '<span class="oly-ai-copy-btn" data-text="' + frappe.utils.escape_html(content) + '" style="cursor:pointer;color:var(--text-muted);display:flex;align-items:center;gap:4px;transition:color .15s;">' + I.copy + ' Copy</span>' +
             (parts ? '<span style="color:var(--text-light);">' + parts + '</span>' : '') +
