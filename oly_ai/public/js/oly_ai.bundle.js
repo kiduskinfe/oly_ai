@@ -30,7 +30,19 @@ oly_ai.ICON = ICON;
 // ─── Markdown Helper ─────────────────────────────────────────
 oly_ai.render_markdown = function (md) {
   if (!md) return "";
-  return '<div class="ai-md">' + frappe.markdown(md) + "</div>";
+  if (!oly_ai._md_converter) {
+    oly_ai._md_converter = new showdown.Converter({
+      tables: true,
+      tasklists: true,
+      strikethrough: true,
+      ghCodeBlocks: true,
+      smoothLivePreview: true,
+      openLinksInNewWindow: true,
+      simpleLineBreaks: false,
+      headerLevelStart: 2,
+    });
+  }
+  return '<div class="ai-md">' + oly_ai._md_converter.makeHtml(md) + "</div>";
 };
 
 // ─── Meta Bar (for dialogs) ─────────────────────────────────

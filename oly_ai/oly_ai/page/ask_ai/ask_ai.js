@@ -53,6 +53,8 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       '.ai-md th,.ai-md td{border:1px solid var(--dark-border-color);padding:6px 10px;text-align:left;font-size:0.85rem;}',
       '.ai-md th{background:var(--control-bg);font-weight:600;}',
       '.ai-md img{max-width:100%;max-height:512px;border-radius:12px;border:1px solid var(--border-color);cursor:pointer;margin:8px 0;}',
+      '.ai-md blockquote{border-left:3px solid var(--primary-color);margin:0.6em 0;padding:4px 12px;color:var(--text-muted);background:var(--control-bg);border-radius:0 6px 6px 0;}',
+      '.ai-md h2,.ai-md h3,.ai-md h4{margin:0.8em 0 0.4em;color:var(--heading-color);}',
       '.fp-sidebar-closed .oly-fp-sidebar{display:none !important;}',
       /* Dark mode overrides — only applied when [data-theme="dark"] */
       '[data-theme="dark"] .oly-fp-ai-avatar{background:#e8e8e8 !important;color:#1a1a1a !important;}',
@@ -86,6 +88,10 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       '.ai-md pre:hover .ai-code-copy{opacity:1;}',
       '.ai-code-copy:hover{color:var(--primary-color);border-color:var(--primary-color);}',
       '.ai-code-lang{position:absolute;top:6px;left:10px;font-size:0.65rem;color:var(--text-light);text-transform:uppercase;letter-spacing:0.5px;}',
+      /* stop button */
+      '.oly-fp-stop-btn{cursor:pointer;height:32px;width:32px;min-width:32px;border-radius:50%;background:var(--red-500);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;animation:oly-pulse 1.5s ease-in-out infinite;border:none;padding:0;}',
+      '.oly-fp-stop-btn:hover{background:var(--red-600);}',
+      '@keyframes oly-pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.4);}50%{box-shadow:0 0 0 6px rgba(239,68,68,0);}}',
       /* streaming cursor */
       '.ai-streaming-cursor::after{content:"▊";animation:ai-blink 1s infinite;color:var(--primary-color);}',
       '@keyframes ai-blink{0%,100%{opacity:1;}50%{opacity:0;}}',
@@ -644,7 +650,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   function send_message() {
     var q = $input.val().trim();
     if (!q || sending) return;
-    sending = true;
+    set_sending_state(true);
     $input.val("").css("height", "auto");
 
     var files_to_send = attached_files.slice();
@@ -697,8 +703,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
               render_action_cards(r.pending_actions);
             }
             scroll_bottom();
-            sending = false;
-            $input.focus();
+            set_sending_state(false);
             load_sessions();
           })
           .catch(function (err) {
@@ -708,7 +713,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
                 '<div style="flex:1;color:var(--red-600);font-size:0.9rem;">' + (err.message || __("Image generation failed")) + '</div>' +
               '</div>'
             );
-            sending = false;
+            set_sending_state(false);
           });
         return;
       }
@@ -748,8 +753,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
                 render_action_cards(r.pending_actions);
               }
               scroll_bottom();
-              sending = false;
-              $input.focus();
+              set_sending_state(false);
               load_sessions();
             })
             .catch(function (err) {
@@ -759,7 +763,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
                   '<div style="flex:1;color:var(--red-600);font-size:0.9rem;">' + (err.message || __("Something went wrong")) + '</div>' +
                 '</div>'
               );
-              sending = false;
+              set_sending_state(false);
             });
         });
     };
@@ -830,9 +834,8 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
 
     delete stream_buffer[data.task_id];
     stream_task_id = null;
-    sending = false;
+    set_sending_state(false);
     scroll_bottom();
-    $input.focus();
     load_sessions();
   });
 
@@ -847,7 +850,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     }
     delete stream_buffer[data.task_id];
     stream_task_id = null;
-    sending = false;
+    set_sending_state(false);
   });
 
   // ── Code block enhancements ──
@@ -1070,6 +1073,14 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     current_model = $(this).val();
   });
   // Mode selector
+  // Recommended models per mode based on testing
+  var mode_recommended_models = {
+    ask: 'gpt-4o-mini',       // Fast, cheap, good for Q&A
+    research: 'gpt-5.2',      // Best quality, thorough analysis
+    agent: 'gpt-5.1',         // Smart + fast, good with tools
+    execute: 'gpt-4o-mini',   // Fast, reliable for structured actions
+  };
+
   $(document).on("click", ".oly-fp-mode", function () {
     $(".oly-fp-mode").removeClass("active");
     $(this).addClass("active");
@@ -1081,6 +1092,12 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       execute: __("What action should I execute?"),
     };
     $input.attr("placeholder", placeholders[current_mode] || placeholders.ask);
+
+    // Auto-switch to recommended model for this mode (if available in dropdown)
+    var rec = mode_recommended_models[current_mode];
+    if (rec && $model.find('option[value="' + rec + '"]').length) {
+      $model.val(rec).trigger('change');
+    }
   });
   // Export button
   $("#fp-export").on("click", export_chat);
