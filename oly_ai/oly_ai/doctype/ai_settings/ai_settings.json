@@ -19,6 +19,20 @@
   "column_break_params",
   "top_p",
   "timeout_seconds",
+  "training_section",
+  "indexed_doctypes",
+  "training_actions",
+  "index_stats_html",
+  "access_control_section",
+  "enable_access_control",
+  "access_levels",
+  "execution_section",
+  "enable_data_queries",
+  "enable_execute_mode",
+  "require_approval",
+  "column_break_exec",
+  "dangerous_actions_warning",
+  "max_records_per_query",
   "budget_section",
   "monthly_budget_usd",
   "daily_request_limit",
@@ -126,6 +140,95 @@
    "label": "Timeout (seconds)",
    "default": 30,
    "description": "Max wait time for AI response"
+  },
+  {
+   "fieldname": "training_section",
+   "fieldtype": "Section Break",
+   "label": "Train AI \u2014 Document Indexing"
+  },
+  {
+   "fieldname": "indexed_doctypes",
+   "fieldtype": "Table",
+   "label": "DocTypes to Index",
+   "options": "AI Indexed DocType",
+   "description": "Select which DocTypes the AI should learn from. Enable Auto-Index to keep knowledge up-to-date automatically."
+  },
+  {
+   "fieldname": "training_actions",
+   "fieldtype": "HTML",
+   "label": "Training Actions",
+   "options": "<div id='ai-training-actions'></div>"
+  },
+  {
+   "fieldname": "index_stats_html",
+   "fieldtype": "HTML",
+   "label": "Index Statistics",
+   "options": "<div id='ai-index-stats'></div>"
+  },
+  {
+   "fieldname": "access_control_section",
+   "fieldtype": "Section Break",
+   "label": "Access Control"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_access_control",
+   "fieldtype": "Check",
+   "label": "Enable Role-Based Access Control",
+   "description": "When enabled, AI features are restricted based on user roles. When disabled, all users get full access."
+  },
+  {
+   "fieldname": "access_levels",
+   "fieldtype": "Table",
+   "label": "Access Levels by Role",
+   "options": "AI Access Level",
+   "depends_on": "eval:doc.enable_access_control",
+   "description": "Map Frappe roles to AI access tiers. Users inherit the highest tier from their roles."
+  },
+  {
+   "fieldname": "execution_section",
+   "fieldtype": "Section Break",
+   "label": "Execution & Data Access"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_data_queries",
+   "fieldtype": "Check",
+   "label": "Enable Live Data Queries",
+   "description": "Allow AI to search and read ERPNext data (respects user permissions)"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_execute_mode",
+   "fieldtype": "Check",
+   "label": "Enable Execute Mode",
+   "description": "Allow AI to propose document creation/updates (requires approval)"
+  },
+  {
+   "default": "1",
+   "fieldname": "require_approval",
+   "fieldtype": "Check",
+   "label": "Require Approval Before Execution",
+   "description": "When enabled, all AI actions must be explicitly approved by the user before execution",
+   "depends_on": "eval:doc.enable_execute_mode"
+  },
+  {
+   "fieldname": "column_break_exec",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "dangerous_actions_warning",
+   "fieldtype": "Check",
+   "label": "Warn on Dangerous Actions",
+   "description": "Show extra warnings for Submit, Cancel, Delete operations"
+  },
+  {
+   "default": "100",
+   "fieldname": "max_records_per_query",
+   "fieldtype": "Int",
+   "label": "Max Records per Query",
+   "description": "Maximum number of records the AI can fetch in a single query"
   },
   {
    "fieldname": "budget_section",
@@ -236,7 +339,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-02-16 00:00:00.000000",
+ "modified": "2026-02-17 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Oly AI",
  "name": "AI Settings",

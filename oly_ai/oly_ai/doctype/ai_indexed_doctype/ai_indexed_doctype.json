@@ -1,0 +1,78 @@
+{
+ "actions": [],
+ "creation": "2026-02-17 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "document_type",
+  "enabled",
+  "auto_index",
+  "column_break_1",
+  "last_indexed",
+  "indexed_count",
+  "chunk_count"
+ ],
+ "fields": [
+  {
+   "fieldname": "document_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Document Type",
+   "options": "DocType",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "default": "1",
+   "fieldname": "auto_index",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Auto-Index on Change",
+   "description": "Automatically re-index when documents are created, updated, or deleted"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_indexed",
+   "fieldtype": "Datetime",
+   "label": "Last Indexed",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "indexed_count",
+   "fieldtype": "Int",
+   "label": "Documents Indexed",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "chunk_count",
+   "fieldtype": "Int",
+   "label": "Chunks Created",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-02-17 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Oly AI",
+ "name": "AI Indexed DocType",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

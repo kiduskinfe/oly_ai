@@ -31,7 +31,7 @@ class LLMProvider:
 		self.top_p = settings.top_p if settings.top_p is not None else 1.0
 		self.timeout = settings.timeout_seconds or 30
 
-	def chat(self, messages, model=None, max_tokens=None, temperature=None, json_mode=False):
+	def chat(self, messages, model=None, max_tokens=None, temperature=None, json_mode=False, tools=None):
 		"""Send a chat completion request. Returns dict with response + usage metadata.
 
 		Args:
@@ -40,14 +40,16 @@ class LLMProvider:
 			max_tokens: override default max tokens
 			temperature: override default temperature
 			json_mode: request JSON output format
+			tools: list of tool definitions for function calling (OpenAI format)
 
 		Returns:
 			dict: {
-				"content": str,          # AI response text
+				"content": str,          # AI response text (may be None if tool_calls)
 				"model": str,            # model used
 				"tokens_input": int,     # input tokens
 				"tokens_output": int,    # output tokens
 				"response_time": float,  # seconds
+				"tool_calls": list|None, # tool calls if function calling
 			}
 		"""
 		model = model or self.default_model
@@ -61,14 +63,14 @@ class LLMProvider:
 		else:
 			# OpenAI and Custom (OpenAI-compatible) use the same API
 			result = self._call_openai_compatible(
-				messages, model, max_tokens, temperature, json_mode
+				messages, model, max_tokens, temperature, json_mode, tools
 			)
 
 		result["response_time"] = round(time.time() - start_time, 2)
 		result["model"] = model
 		return result
 
-	def _call_openai_compatible(self, messages, model, max_tokens, temperature, json_mode=False):
+	def _call_openai_compatible(self, messages, model, max_tokens, temperature, json_mode=False, tools=None):
 		"""Call OpenAI-compatible API (works with OpenAI, Ollama, vLLM, LiteLLM)."""
 		url = f"{self.base_url.rstrip('/')}/chat/completions"
 
@@ -88,16 +90,23 @@ class LLMProvider:
 		if json_mode:
 			payload["response_format"] = {"type": "json_object"}
 
+		if tools:
+			payload["tools"] = tools
+			payload["tool_choice"] = "auto"
+
 		try:
 			response = requests.post(url, headers=headers, json=payload, timeout=self.timeout)
 			response.raise_for_status()
 			data = response.json()
 
-			return {
-				"content": data["choices"][0]["message"]["content"],
+			msg = data["choices"][0]["message"]
+			result = {
+				"content": msg.get("content"),
 				"tokens_input": data.get("usage", {}).get("prompt_tokens", 0),
 				"tokens_output": data.get("usage", {}).get("completion_tokens", 0),
+				"tool_calls": msg.get("tool_calls"),
 			}
+			return result
 		except requests.exceptions.Timeout:
 			frappe.throw(f"AI request timed out after {self.timeout}s. Try again or increase timeout.")
 		except requests.exceptions.HTTPError as e:

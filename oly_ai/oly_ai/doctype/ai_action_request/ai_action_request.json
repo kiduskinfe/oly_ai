@@ -1,0 +1,143 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-02-17 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "status",
+  "action_type",
+  "target_doctype",
+  "column_break_1",
+  "target_name",
+  "session",
+  "requested_by",
+  "details_section",
+  "action_summary",
+  "action_data",
+  "result_section",
+  "result_message",
+  "executed_at",
+  "error_message"
+ ],
+ "fields": [
+  {
+   "default": "Pending",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Pending\nApproved\nExecuted\nRejected\nFailed",
+   "reqd": 1
+  },
+  {
+   "fieldname": "action_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Action Type",
+   "options": "Create Document\nUpdate Document\nSubmit Document\nCancel Document\nDelete Document\nRun Report\nCustom",
+   "reqd": 1
+  },
+  {
+   "fieldname": "target_doctype",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Target DocType",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "target_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Target Document"
+  },
+  {
+   "fieldname": "session",
+   "fieldtype": "Link",
+   "label": "Chat Session",
+   "options": "AI Chat Session"
+  },
+  {
+   "fieldname": "requested_by",
+   "fieldtype": "Link",
+   "label": "Requested By",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "fieldname": "details_section",
+   "fieldtype": "Section Break",
+   "label": "Action Details"
+  },
+  {
+   "fieldname": "action_summary",
+   "fieldtype": "Small Text",
+   "label": "Action Summary",
+   "description": "Human-readable description of what the AI wants to do"
+  },
+  {
+   "fieldname": "action_data",
+   "fieldtype": "Code",
+   "label": "Action Data (JSON)",
+   "options": "JSON",
+   "description": "Structured data for execution: fieldname-value pairs, filters, etc."
+  },
+  {
+   "fieldname": "result_section",
+   "fieldtype": "Section Break",
+   "label": "Result",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "result_message",
+   "fieldtype": "Small Text",
+   "label": "Result Message",
+   "read_only": 1
+  },
+  {
+   "fieldname": "executed_at",
+   "fieldtype": "Datetime",
+   "label": "Executed At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error_message",
+   "fieldtype": "Small Text",
+   "label": "Error Message",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-02-17 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Oly AI",
+ "name": "AI Action Request",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "All",
+   "write": 0
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

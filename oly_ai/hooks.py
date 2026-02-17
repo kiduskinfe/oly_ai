@@ -41,9 +41,23 @@ scheduler_events = {
     "daily": [
         "oly_ai.core.cost_tracker.reset_daily_counters",
     ],
+    "daily_long": [
+        "oly_ai.api.train.scheduled_reindex",
+    ],
     "weekly": [
         "oly_ai.core.cost_tracker.generate_weekly_usage_report",
     ],
+}
+
+# Auto-reindex hooks — triggered on document changes
+# Uses a wildcard (*) so it fires for ALL doctypes.
+# The handler checks if the DocType is in the indexed_doctypes list.
+doc_events = {
+    "*": {
+        "on_update": "oly_ai.api.train.auto_index_on_update",
+        "after_insert": "oly_ai.api.train.auto_index_on_insert",
+        "on_trash": "oly_ai.api.train.auto_index_on_trash",
+    },
 }
 
 # Fixtures — export AI Prompt Templates

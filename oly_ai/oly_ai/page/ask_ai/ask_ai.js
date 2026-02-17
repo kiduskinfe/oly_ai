@@ -63,6 +63,23 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       '[data-theme="dark"] .oly-fp-sb-item.active{background:var(--gray-700) !important;}',
       '[data-theme="dark"] .oly-fp-sb-new:hover{background:var(--gray-700) !important;color:white !important;}',
       '[data-theme="dark"] .oly-fp-user-bubble{background:var(--gray-700) !important;}',
+      /* approval cards */
+      '.oly-action-card{background:var(--control-bg);border:1px solid var(--dark-border-color);border-radius:12px;padding:14px 16px;margin:8px 0;}',
+      '.oly-action-card .oly-action-header{display:flex;align-items:center;gap:8px;margin-bottom:8px;}',
+      '.oly-action-card .oly-action-badge{font-size:0.7rem;font-weight:600;padding:2px 8px;border-radius:10px;text-transform:uppercase;}',
+      '.oly-action-badge.pending{background:var(--yellow-100);color:var(--yellow-700);}',
+      '.oly-action-badge.executed{background:var(--green-100);color:var(--green-700);}',
+      '.oly-action-badge.rejected{background:var(--red-100);color:var(--red-600);}',
+      '.oly-action-badge.failed{background:var(--red-100);color:var(--red-600);}',
+      '.oly-action-card .oly-action-detail{font-size:0.85rem;color:var(--text-color);margin:4px 0;}',
+      '.oly-action-card .oly-action-fields{font-size:0.8rem;color:var(--text-muted);background:var(--bg-color);border-radius:8px;padding:8px 12px;margin:8px 0;font-family:monospace;max-height:150px;overflow-y:auto;}',
+      '.oly-action-card .oly-action-btns{display:flex;gap:8px;margin-top:10px;}',
+      '.oly-action-card .btn-approve{background:var(--green-500);color:white;border:none;padding:6px 16px;border-radius:8px;font-size:0.8rem;font-weight:600;cursor:pointer;}',
+      '.oly-action-card .btn-approve:hover{background:var(--green-600);}',
+      '.oly-action-card .btn-reject{background:transparent;color:var(--red-500);border:1px solid var(--red-300);padding:6px 16px;border-radius:8px;font-size:0.8rem;font-weight:600;cursor:pointer;}',
+      '.oly-action-card .btn-reject:hover{background:var(--red-50);}',
+      '[data-theme="dark"] .oly-action-card{background:var(--gray-800);border-color:var(--gray-600);}',
+      '[data-theme="dark"] .oly-action-card .oly-action-fields{background:var(--gray-900);}',
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -116,6 +133,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   var sending = false;
   var sidebar_open = true;
   var attached_files = []; // [{name, file_url, is_image, preview}]
+  var user_access = null; // loaded async — {tier, allowed_modes, can_query_data, can_execute_actions}
 
   var I = oly_ai.ICON;
 
@@ -452,6 +470,100 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     setTimeout(function () { var el = $msgs[0]; if (el) el.scrollTop = el.scrollHeight; }, 60);
   }
 
+  // ── Approval Action Cards ──
+  function render_action_cards(actions) {
+    if (!actions || !actions.length) return;
+    actions.forEach(function (action) {
+      var fields_html = '';
+      if (action.fields) {
+        var entries = Object.entries(action.fields);
+        if (entries.length) {
+          fields_html = '<div class="oly-action-fields">';
+          entries.forEach(function (pair) {
+            fields_html += '<div><strong>' + frappe.utils.escape_html(pair[0]) + ':</strong> ' + frappe.utils.escape_html(String(pair[1])) + '</div>';
+          });
+          fields_html += '</div>';
+        }
+      }
+
+      var dangerous = ['Submit Document', 'Cancel Document', 'Delete Document'];
+      var warning_html = '';
+      if (dangerous.indexOf(action.action_type) > -1) {
+        warning_html = '<div style="color:var(--red-500);font-size:0.8rem;margin:6px 0;font-weight:500;">' +
+          '⚠️ ' + __("This is a potentially irreversible action. Please review carefully.") + '</div>';
+      }
+
+      var card_id = 'action-' + action.action_id;
+      var card_html = w() +
+        '<div class="oly-action-card" id="' + card_id + '">' +
+          '<div class="oly-action-header">' +
+            '<span class="oly-action-badge pending">' + __("Pending Approval") + '</span>' +
+            '<span style="font-size:0.75rem;color:var(--text-muted);">' + frappe.utils.escape_html(action.action_type) + '</span>' +
+          '</div>' +
+          '<div class="oly-action-detail">' + frappe.utils.escape_html(action.summary || action.message) + '</div>' +
+          (action.target_doctype ? '<div style="font-size:0.8rem;color:var(--text-muted);">DocType: <strong>' + frappe.utils.escape_html(action.target_doctype) + '</strong>' +
+            (action.target_name ? ' / ' + frappe.utils.escape_html(action.target_name) : '') + '</div>' : '') +
+          fields_html +
+          warning_html +
+          '<div class="oly-action-btns">' +
+            '<button class="btn-approve" data-action="' + action.action_id + '">' + __("✓ Approve & Execute") + '</button>' +
+            '<button class="btn-reject" data-action="' + action.action_id + '">' + __("✕ Reject") + '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+      $msgs.append(card_html);
+    });
+
+    // Wire up buttons
+    $msgs.find('.btn-approve').off('click').on('click', function () {
+      var action_id = $(this).data('action');
+      var $card = $('#action-' + action_id);
+      var $btns = $card.find('.oly-action-btns');
+      $btns.html('<span style="color:var(--text-muted);font-size:0.8rem;"><i class="fa fa-spinner fa-spin"></i> ' + __("Executing...") + '</span>');
+
+      frappe.xcall('oly_ai.api.actions.approve_action', { action_name: action_id })
+        .then(function (r) {
+          $card.find('.oly-action-badge').removeClass('pending').addClass('executed').text(__("Executed"));
+          $btns.html('<span style="color:var(--green-600);font-size:0.8rem;font-weight:600;">✓ ' + frappe.utils.escape_html(r.message || __("Action executed successfully")) + '</span>');
+        })
+        .catch(function (err) {
+          $card.find('.oly-action-badge').removeClass('pending').addClass('failed').text(__("Failed"));
+          $btns.html('<span style="color:var(--red-500);font-size:0.8rem;">✕ ' + frappe.utils.escape_html(err.message || __("Execution failed")) + '</span>');
+        });
+    });
+
+    $msgs.find('.btn-reject').off('click').on('click', function () {
+      var action_id = $(this).data('action');
+      var $card = $('#action-' + action_id);
+      frappe.xcall('oly_ai.api.actions.reject_action', { action_name: action_id })
+        .then(function () {
+          $card.find('.oly-action-badge').removeClass('pending').addClass('rejected').text(__("Rejected"));
+          $card.find('.oly-action-btns').html('<span style="color:var(--text-muted);font-size:0.8rem;">' + __("Action rejected") + '</span>');
+        });
+    });
+
+    scroll_bottom();
+  }
+
+  // ── Load user access level ──
+  function load_user_access() {
+    frappe.xcall('oly_ai.core.access_control.get_user_access').then(function (access) {
+      user_access = access;
+      // Hide modes the user doesn't have access to
+      if (access && access.allowed_modes) {
+        $('.oly-fp-mode').each(function () {
+          var mode = $(this).data('mode');
+          if (access.allowed_modes.indexOf(mode) === -1) {
+            $(this).hide();
+          }
+        });
+      }
+    }).catch(function () {
+      // If access control check fails, show all modes
+      user_access = null;
+    });
+  }
+
   // ── Send ──
   function send_message() {
     var q = $input.val().trim();
@@ -503,6 +615,10 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         .then(function (r) {
           $("#" + lid).closest('div[style*="max-width"]').remove();
           append_ai_msg(r.content, r);
+          // Render approval cards if pending actions exist
+          if (r.pending_actions && r.pending_actions.length) {
+            render_action_cards(r.pending_actions);
+          }
           scroll_bottom();
           sending = false;
           $input.focus();
@@ -607,5 +723,6 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   // ── Init ──
   show_welcome();
   load_sessions();
+  load_user_access();
   $input.focus();
 };

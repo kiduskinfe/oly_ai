@@ -213,6 +213,15 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 	# System prompt — varies by mode
 	mode = mode or "ask"
 
+	# Access control check
+	try:
+		from oly_ai.core.access_control import check_mode_access
+		access = check_mode_access(user, mode)
+	except frappe.PermissionError:
+		raise
+	except Exception:
+		access = {"can_query_data": True, "can_execute_actions": False}
+
 	SYSTEM_PROMPTS = {
 		"ask": """You are an AI assistant for ERPNext ERP system at OLY Technologies.
 You help employees with questions about:
@@ -373,24 +382,94 @@ Rules:
 	# Determine model: use per-request override, else session/settings default
 	model = model or settings.default_model
 
+	# Get available tools for this mode
+	tools = None
+	try:
+		from oly_ai.core.tools import get_available_tools
+		tool_list = get_available_tools(user=user, mode=mode)
+		if tool_list:
+			tools = tool_list
+	except Exception:
+		tools = None
+
 	try:
 		provider = LLMProvider(settings)
-		result = provider.chat(llm_messages, model=model)
-		cost = track_usage(model, result["tokens_input"], result["tokens_output"], user)
+
+		# ── Tool calling loop ──
+		# The LLM may call tools, we execute them and feed results back.
+		# Max 5 iterations to prevent infinite loops.
+		total_input_tokens = 0
+		total_output_tokens = 0
+		MAX_TOOL_ROUNDS = 5
+		pending_actions = []  # Track action requests for approval
+
+		for _round in range(MAX_TOOL_ROUNDS):
+			result = provider.chat(llm_messages, model=model, tools=tools)
+			total_input_tokens += result.get("tokens_input", 0)
+			total_output_tokens += result.get("tokens_output", 0)
+
+			tool_calls = result.get("tool_calls")
+
+			if not tool_calls:
+				# No tool calls — LLM is done, use the text response
+				break
+
+			# Process tool calls
+			from oly_ai.core.tools import execute_tool
+
+			# Append the assistant message with tool calls to conversation
+			assistant_msg = {"role": "assistant", "content": result.get("content")}
+			if tool_calls:
+				assistant_msg["tool_calls"] = tool_calls
+			llm_messages.append(assistant_msg)
+
+			for tc in tool_calls:
+				fn_name = tc["function"]["name"]
+				try:
+					fn_args = json.loads(tc["function"]["arguments"])
+				except json.JSONDecodeError:
+					fn_args = {}
+
+				tool_result = execute_tool(fn_name, fn_args, user=user)
+
+				# Check if this is a pending action (needs approval)
+				try:
+					parsed_result = json.loads(tool_result)
+					if parsed_result.get("status") == "pending_approval":
+						# Link action to this session
+						action_id = parsed_result.get("action_id")
+						if action_id:
+							frappe.db.set_value("AI Action Request", action_id, "session", session_name)
+							frappe.db.commit()
+						pending_actions.append(parsed_result)
+				except (json.JSONDecodeError, TypeError):
+					pass
+
+				# Feed tool result back to the LLM
+				llm_messages.append({
+					"role": "tool",
+					"tool_call_id": tc["id"],
+					"content": tool_result,
+				})
+
+		# Final response content
+		final_content = result.get("content") or ""
+
+		cost = track_usage(model, total_input_tokens, total_output_tokens, user)
 
 		# Add assistant response to session
 		session.append("messages", {
 			"role": "assistant",
-			"content": result["content"],
+			"content": final_content,
 			"model": result["model"],
-			"tokens_input": result["tokens_input"],
-			"tokens_output": result["tokens_output"],
+			"tokens_input": total_input_tokens,
+			"tokens_output": total_output_tokens,
 			"cost": cost,
 			"response_time": result["response_time"],
 		})
 
 		# Update session totals
-		session.total_tokens = (session.total_tokens or 0) + result["tokens_input"] + result["tokens_output"]
+		session.total_tokens = (session.total_tokens or 0) + total_input_tokens + total_output_tokens
 		session.total_cost = (session.total_cost or 0) + cost
 
 		# Auto-title from first user message
@@ -406,21 +485,22 @@ Rules:
 			from oly_ai.api.gateway import _log_audit
 			_log_audit(
 				user, "Ask AI", "", "", model,
-				message, result["content"],
-				result["tokens_input"], result["tokens_output"],
+				message, final_content,
+				total_input_tokens, total_output_tokens,
 				cost, result["response_time"], "Success",
 			)
 		except Exception:
 			pass
 
 		return {
-			"content": result["content"],
+			"content": final_content,
 			"model": result["model"],
 			"cost": cost,
-			"tokens": result["tokens_input"] + result["tokens_output"],
+			"tokens": total_input_tokens + total_output_tokens,
 			"response_time": result["response_time"],
 			"sources": sources,
 			"session_title": session.title,
+			"pending_actions": pending_actions if pending_actions else None,
 		}
 
 	except Exception as e:

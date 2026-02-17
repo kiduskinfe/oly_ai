@@ -1,0 +1,81 @@
+{
+ "actions": [],
+ "creation": "2026-02-17 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "role",
+  "access_tier",
+  "column_break_1",
+  "can_query_data",
+  "can_execute_actions",
+  "can_use_agent_mode",
+  "max_daily_requests"
+ ],
+ "fields": [
+  {
+   "fieldname": "role",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Role",
+   "options": "Role",
+   "reqd": 1
+  },
+  {
+   "default": "Standard",
+   "fieldname": "access_tier",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Access Tier",
+   "options": "Basic\nStandard\nPower\nAdmin",
+   "reqd": 1,
+   "description": "Basic: Ask only | Standard: Ask + Research | Power: + Agent + Data | Admin: + Execute"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "can_query_data",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Can Query Live Data",
+   "description": "Allow AI to search and read ERPNext documents"
+  },
+  {
+   "default": "0",
+   "fieldname": "can_execute_actions",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Can Execute Actions",
+   "description": "Allow AI to create/update documents (with approval)"
+  },
+  {
+   "default": "1",
+   "fieldname": "can_use_agent_mode",
+   "fieldtype": "Check",
+   "label": "Can Use Agent Mode"
+  },
+  {
+   "default": "0",
+   "fieldname": "max_daily_requests",
+   "fieldtype": "Int",
+   "label": "Max Daily Requests Override",
+   "description": "0 = use global default"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-02-17 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Oly AI",
+ "name": "AI Access Level",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}
