@@ -251,9 +251,9 @@ oly_ai.Panel = class {
     this.$bubble.html(this.open_bubble_html);
     this.$app.append(this.$bubble);
 
-    // 4. Navbar icon — exactly like Chat's .chat-navbar-icon
+    // 4. Navbar icon — explicit color so it's visible in both light and dark themes
     var navbar_icon_html =
-      '<li class="nav-item dropdown dropdown-notifications dropdown-mobile oly-ai-nav" title="' + __('AI Assistant') + '">' +
+      '<li class="nav-item dropdown dropdown-notifications dropdown-mobile oly-ai-nav" title="' + __('AI Assistant') + '" style="cursor:pointer;display:flex;align-items:center;color:var(--gray-600);">' +
       ICON.sparkles +
       '</li>';
 

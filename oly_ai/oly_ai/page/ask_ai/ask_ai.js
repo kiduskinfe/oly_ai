@@ -110,13 +110,32 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
 
   // ── Build Layout ──
   // Use position:fixed so the AI page sits exactly below the navbar, no overlap.
+  // Respect "Toggle Full Width" setting from Frappe
   var navbar_h = ($(".navbar").outerHeight() || 56);
+  var is_full_width = JSON.parse(localStorage.container_fullwidth || 'false');
+  var fp_left = '0';
+  var fp_right = '0';
+  if (!is_full_width) {
+    // Frappe default container is max 1140px centered. Calculate side margins.
+    var container_max = 1140;
+    var vw = window.innerWidth;
+    if (vw > container_max) {
+      var side = Math.floor((vw - container_max) / 2);
+      fp_left = side + 'px';
+      fp_right = side + 'px';
+    }
+  }
   page.main.html(
-    '<div class="oly-fp" id="oly-fp" style="position:fixed;top:' + navbar_h + 'px;left:0;right:0;bottom:0;display:flex;overflow:hidden;font-family:var(--font-stack);color:var(--text-color);background:var(--bg-color);z-index:100;">' +
+    '<div class="oly-fp" id="oly-fp" style="position:fixed;top:' + navbar_h + 'px;left:' + fp_left + ';right:' + fp_right + ';bottom:0;display:flex;overflow:hidden;font-family:var(--font-stack);color:var(--text-color);background:var(--bg-color);z-index:100;border-radius:' + (is_full_width ? '0' : '0 0 0 0') + ';">' +
 
     /* Sidebar */
     '<div class="oly-fp-sidebar" id="oly-fp-sidebar" style="width:260px;min-width:260px;background:var(--card-bg);border-right:1px solid var(--dark-border-color);display:flex;flex-direction:column;overflow:hidden;">' +
-      '<div style="padding:14px 12px 8px;">' +
+      /* Branding / page name */
+      '<div style="padding:14px 12px 6px;display:flex;align-items:center;gap:8px;">' +
+        '<span style="color:var(--primary-color);display:flex;">' + I.sparkles + '</span>' +
+        '<span style="font-weight:700;font-size:1rem;color:var(--heading-color);">' + __("Ask AI") + '</span>' +
+      '</div>' +
+      '<div style="padding:6px 12px 8px;">' +
         '<button class="oly-fp-sb-new" id="fp-new" style="width:100%;display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--dark-border-color);border-radius:8px;background:transparent;color:var(--text-color);cursor:pointer;font-size:0.875rem;font-weight:500;">' +
           I.plus + '<span>' + __("New chat") + '</span>' +
         '</button>' +
@@ -517,6 +536,22 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   // Model selector
   $model.on("change", function () {
     current_model = $(this).val();
+  });
+
+  // Respond to Toggle Full Width in real-time
+  $(document.body).on("toggleFullWidth", function () {
+    var fw = JSON.parse(localStorage.container_fullwidth || 'false');
+    if (fw) {
+      $fp.css({ left: '0', right: '0' });
+    } else {
+      var cmax = 1140, vw = window.innerWidth;
+      if (vw > cmax) {
+        var s = Math.floor((vw - cmax) / 2);
+        $fp.css({ left: s + 'px', right: s + 'px' });
+      } else {
+        $fp.css({ left: '0', right: '0' });
+      }
+    }
   });
 
   // ── Init ──
