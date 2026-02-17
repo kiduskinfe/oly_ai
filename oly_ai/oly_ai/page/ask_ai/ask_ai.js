@@ -53,6 +53,15 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       '.ai-md th,.ai-md td{border:1px solid var(--dark-border-color);padding:6px 10px;text-align:left;font-size:0.85rem;}',
       '.ai-md th{background:var(--control-bg);font-weight:600;}',
       '.fp-sidebar-closed .oly-fp-sidebar{display:none !important;}',
+      /* Dark mode overrides — only applied when [data-theme="dark"] */
+      '[data-theme="dark"] .oly-fp-ai-avatar{background:#e8e8e8 !important;color:#1a1a1a !important;}',
+      '[data-theme="dark"] .oly-fp .oly-ai-send-btn{background:white !important;}',
+      '[data-theme="dark"] .oly-fp .oly-ai-send-btn svg{fill:#1a1a1a !important;}',
+      '[data-theme="dark"] .oly-fp-input-bar{border-color:var(--gray-600) !important;}',
+      '[data-theme="dark"] .oly-fp-mode.active{background:white !important;color:#1a1a1a !important;}',
+      '[data-theme="dark"] .oly-fp-sb-item.active{background:var(--gray-700) !important;}',
+      '[data-theme="dark"] .oly-fp-sb-new:hover{background:var(--gray-700) !important;color:white !important;}',
+      '[data-theme="dark"] .oly-fp-user-bubble{background:var(--gray-700) !important;}',
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -174,7 +183,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       /* Input area */
       '<div style="padding:0 16px 12px;flex-shrink:0;">' +
         '<div id="fp-attach-preview" class="oly-fp-attach-preview" style="max-width:850px;margin:0 auto;"></div>' +
-        '<div style="max-width:850px;margin:0 auto;display:flex;align-items:flex-end;gap:8px;border:1px solid var(--dark-border-color);border-radius:16px;padding:8px 12px;background:var(--control-bg);">' +
+        '<div class="oly-fp-input-bar" style="max-width:850px;margin:0 auto;display:flex;align-items:flex-end;gap:8px;border:1px solid var(--dark-border-color);border-radius:16px;padding:8px 12px;background:var(--control-bg);">' +
           '<span class="oly-fp-attach-btn" id="fp-attach" style="cursor:pointer;color:var(--text-muted);display:flex;align-items:center;padding:4px;flex-shrink:0;" title="' + __("Attach file or image") + '">' + clip_icon + '</span>' +
           '<input type="file" id="fp-file-input" multiple accept="image/*,.pdf,.txt,.csv,.xlsx,.xls,.doc,.docx,.json,.xml,.md" style="display:none;" />' +
           '<textarea id="fp-input" rows="1" placeholder="' + __("Message AI...") + '" maxlength="4000" style="flex:1;border:none;background:transparent;color:var(--text-color);font-size:0.9rem;resize:none;min-height:24px;max-height:150px;line-height:1.5;outline:none;font-family:inherit;padding:4px 0;"></textarea>' +
@@ -383,7 +392,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       w() +
       '<div style="display:flex;gap:12px;margin-bottom:20px;justify-content:flex-end;">' +
         '<div style="max-width:75%;">' +
-          '<div style="background:var(--primary-color);color:white;border-radius:18px 18px 4px 18px;padding:10px 16px;font-size:0.9rem;line-height:1.5;word-break:break-word;">' +
+          '<div class="oly-fp-user-bubble" style="background:var(--primary-color);color:white;border-radius:18px 18px 4px 18px;padding:10px 16px;font-size:0.9rem;line-height:1.5;word-break:break-word;">' +
             frappe.utils.escape_html(text) +
           '</div>' +
         '</div>' +
@@ -397,7 +406,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     $msgs.append(
       w() +
       '<div style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start;">' +
-        '<div style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + I.sparkles + '</div>' +
+        '<div class="oly-fp-ai-avatar" style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + I.sparkles + '</div>' +
         '<div style="flex:1;min-width:0;">' +
           oly_ai.render_markdown(content) +
           '<div style="display:flex;align-items:center;gap:12px;margin-top:6px;font-size:0.75rem;">' +
@@ -459,7 +468,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       $msgs.append(
         w() +
         '<div id="' + lid + '" style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start;">' +
-          '<div style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + I.sparkles + '</div>' +
+          '<div class="oly-fp-ai-avatar" style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + I.sparkles + '</div>' +
           '<div style="flex:1;"><div class="oly-ai-typing"><span></span><span></span><span></span></div></div>' +
         '</div></div>'
       );

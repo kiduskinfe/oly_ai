@@ -638,3 +638,29 @@
   background: rgba(239,68,68,0.06); border-radius: 8px;
   border: 1px solid rgba(239,68,68,0.15);
 }
+
+/* ────────────────────────────────────────────
+   11. DARK MODE OVERRIDES
+   ──────────────────────────────────────────── */
+[data-theme="dark"] .oly-ai-msg-avatar-ai {
+  background: #e8e8e8 !important;
+  border-color: #ccc !important;
+}
+[data-theme="dark"] .oly-ai-msg-avatar-ai svg {
+  fill: #1a1a1a !important;
+}
+[data-theme="dark"] .oly-ai-send-btn {
+  background: white !important;
+}
+[data-theme="dark"] .oly-ai-send-btn svg {
+  fill: #1a1a1a !important;
+}
+[data-theme="dark"] .oly-ai-bubble {
+  background: white !important;
+}
+[data-theme="dark"] .oly-ai-bubble svg {
+  fill: #1a1a1a !important;
+}
+[data-theme="dark"] .oly-ai-msg-bubble-user {
+  background: var(--gray-700) !important;
+}

@@ -216,7 +216,7 @@ oly_ai.Panel = class {
       '<div style="display:flex;align-items:center;padding:3px 12px 12px 12px;flex-shrink:0;">' +
       '  <textarea class="oly-ai-input" rows="1" placeholder="' + __("Ask anything...") + '" maxlength="4000"' +
       '    style="flex:1;margin:0 10px 0 0;border-radius:100px;font-size:0.875rem;border:1px solid var(--dark-border-color);background:var(--control-bg);color:var(--text-color);padding:8px 14px;resize:none;min-height:36px;max-height:120px;line-height:1.4;outline:none;font-family:inherit;"></textarea>' +
-      '  <span class="oly-ai-send-btn" style="cursor:pointer;height:2rem;width:2rem;min-width:2rem;border-radius:50%;background:var(--primary-color);display:flex;align-items:center;justify-content:center;">' + ICON.send + '</span>' +
+      '  <span class="oly-ai-send-btn" style="cursor:pointer;height:2rem;width:2rem;min-width:2rem;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;">' + ICON.send + '</span>' +
       '</div>' +
       '<a href="/app/ask-ai" style="display:block;text-align:center;font-size:0.75rem;color:var(--text-muted);padding:0 0 8px;text-decoration:none;">' + __("Open full page") + ' &rarr;</a>'
     );
