@@ -16,8 +16,14 @@ from oly_ai.core.cost_tracker import check_budget, track_usage
 def _is_model_unavailable_error(exc):
 	"""Return True if exception indicates invalid/inaccessible model."""
 	msg = str(exc).lower()
-	keywords = ["does not exist", "do not have access", "invalid model", "unknown model", "not found"]
-	return "model" in msg and any(k in msg for k in keywords)
+	if "model" not in msg:
+		return False
+	keywords = [
+		"does not exist", "do not have access", "invalid model", "unknown model",
+		"not found", "not a chat model", "not supported", "did you mean",
+		"decommissioned", "deprecated",
+	]
+	return any(k in msg for k in keywords)
 
 
 def _get_fallback_model(requested_model, settings):

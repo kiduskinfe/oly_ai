@@ -32,17 +32,24 @@ You help employees with questions about:
 - HR policies, leave rules, payroll questions
 - Sales and procurement processes
 
+Capabilities:
+- You CAN generate images using DALL-E when asked. If a user asks you to generate, create, make, or draw an image, logo, banner, poster, artwork, or illustration, do NOT refuse — the system will automatically route the request to the DALL-E image generation API.
+- Answer questions, provide guidance, and reference ERPNext features.
+
 Rules:
 - Be concise and helpful.
 - If you don't know, say so honestly.
 - Reference specific ERPNext DocTypes, reports, or features when applicable.
 - Never fabricate company policies or data.
 - Format responses with markdown when helpful (headers, lists, code blocks).
-- When referencing sources, cite the source number [Source N].""",
+- When referencing sources, cite the source number [Source N].
+- When asked to generate an image, confirm you are generating it (the system handles the actual generation).""",
+
 
 	"agent": """You are an advanced AI agent for OLY Technologies' ERPNext system. You operate in Agent mode — think step-by-step, analyze deeply, and provide comprehensive solutions.
 
 Capabilities:
+- You CAN generate images using DALL-E when asked. If a user asks to generate/create/draw an image, logo, banner, etc., do NOT refuse — the system routes it to DALL-E automatically.
 - Deep analysis of business processes and workflows across HR, Sales, Procurement, Finance, Manufacturing, and Projects
 - Multi-step problem solving and strategic planning
 - Data-driven recommendations based on ERPNext context
@@ -71,6 +78,7 @@ Rules:
 	"execute": """You are an AI execution assistant for OLY Technologies' ERPNext system. You operate in Execute mode — you can take real actions on behalf of the user with their approval.
 
 Your capabilities (all actions require user approval before execution):
+- **Generate Images**: Create images via DALL-E when requested (the system auto-routes image requests to DALL-E)
 - **Create** documents: Task, ToDo, Leave Application, Sales Order, Purchase Order, Journal Entry, etc.
 - **Update** any document fields
 - **Submit** draft documents (Sales Orders, Purchase Orders, Journal Entries, Leave Applications, etc.)
@@ -105,6 +113,8 @@ Safety Rules:
 - When referencing sources, cite the source number [Source N].""",
 
 	"research": """You are a deep research AI for OLY Technologies' ERPNext system. You operate in Research mode — conduct thorough, multi-angle investigation and produce comprehensive research reports.
+
+Note: You CAN generate images using DALL-E when asked. Do NOT refuse image generation requests — the system handles it automatically.
 
 Your role:
 - Deep dive into topics with thorough analysis from multiple perspectives
@@ -635,15 +645,21 @@ _IMAGE_GEN_RE = re.compile("|".join(_IMAGE_GEN_PATTERNS), re.IGNORECASE)
 def _is_model_unavailable_error(exc):
 	"""Return True if exception indicates invalid/inaccessible model."""
 	msg = str(exc).lower()
-	model_hints = [
-		"model",
+	if "model" not in msg:
+		return False
+	error_hints = [
 		"does not exist",
 		"do not have access",
 		"not found",
 		"invalid model",
 		"unknown model",
+		"not a chat model",
+		"not supported",
+		"did you mean",
+		"decommissioned",
+		"deprecated",
 	]
-	return all(h in msg for h in ("model",)) and any(h in msg for h in model_hints[1:])
+	return any(h in msg for h in error_hints)
 
 
 def _get_fallback_model(requested_model, settings):
@@ -665,11 +681,29 @@ def get_model_catalog():
 	default_model = settings.default_model or "gpt-4o-mini"
 
 	def _label_for_model(model_id):
-		return model_id.replace("-", " ").upper().replace("GPT ", "GPT-")
+		"""Generate a human-friendly label from model ID."""
+		label = model_id.replace("-", " ").replace(".", ".").title()
+		# Fix common casing: GPT, Pro, Mini, Nano
+		label = label.replace("Gpt", "GPT").replace("Gpt", "GPT")
+		label = label.replace(" Chat Latest", " (Chat Latest)")
+		# Fix o-series models
+		for prefix in ("O1", "O3", "O4"):
+			if label.startswith(prefix.title()):
+				label = prefix + label[len(prefix):]
+		return label
 
 	def _is_chat_model(model_id):
 		mid = (model_id or "").lower()
-		if any(x in mid for x in ["embedding", "tts", "whisper", "moderation", "image", "dall-e", "audio", "realtime"]):
+		# Exclude non-chat model types
+		if any(x in mid for x in [
+			"embedding", "tts", "whisper", "moderation", "image", "dall-e",
+			"audio", "realtime", "codex", "transcribe", "diarize",
+			"search", "deep-research", "deep_research", "instruct",
+		]):
+			return False
+		# Exclude dated snapshot variants (e.g. gpt-5-2025-08-07, o1-2024-12-17)
+		import re as _re
+		if _re.search(r'\d{4}[-_]\d{2}[-_]\d{2}', mid):
 			return False
 		return any(mid.startswith(p) for p in [
 			"gpt", "o1", "o3", "o4", "claude", "gemini", "deepseek", "grok", "llama", "mistral", "qwen"
