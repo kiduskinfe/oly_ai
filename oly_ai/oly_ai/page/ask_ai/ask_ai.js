@@ -32,6 +32,11 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       '.oly-fp-attach-item img{width:24px;height:24px;border-radius:4px;object-fit:cover;}',
       '.oly-fp-attach-rm{cursor:pointer;color:var(--text-muted);font-weight:700;margin-left:2px;}',
       '.oly-fp-attach-rm:hover{color:var(--red-600);}',
+      /* mode selector */
+      '.oly-fp-mode-sel{display:flex;border:1px solid var(--border-color);border-radius:20px;overflow:hidden;background:var(--control-bg);}',
+      '.oly-fp-mode{padding:5px 14px;font-size:0.75rem;border:none;background:transparent;color:var(--text-muted);cursor:pointer;font-family:inherit;font-weight:500;transition:all .15s;white-space:nowrap;}',
+      '.oly-fp-mode:hover{color:var(--text-color);}',
+      '.oly-fp-mode.active{background:var(--primary-color);color:white;border-radius:20px;}',
       /* typing dots */
       '.oly-ai-typing{display:flex;gap:4px;padding:8px 0;}',
       '.oly-ai-typing span{width:8px;height:8px;border-radius:50%;background:var(--text-muted);animation:oly-dot 1.4s infinite both;}',
@@ -89,6 +94,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     { value: 'o4-mini', label: 'o4-mini (Reasoning)', group: 'Reasoning' },
   ];
   var current_model = 'gpt-4o-mini';
+  var current_mode = 'ask'; // ask | agent | execute
 
   // State
   var current_session = null;
@@ -154,7 +160,13 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       /* Top bar */
       '<div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid var(--dark-border-color);flex-shrink:0;gap:12px;">' +
         '<button id="fp-toggle" title="' + __("Toggle sidebar") + '" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px;display:flex;">' + I.menu + '</button>' +
-        '<span id="fp-title" style="font-weight:600;font-size:1rem;color:var(--heading-color);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + __("New Chat") + '</span>' +
+        '<span id="fp-title" style="font-weight:600;font-size:1rem;color:var(--heading-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + __("New Chat") + '</span>' +
+        '<div style="flex:1;"></div>' +
+        '<div class="oly-fp-mode-sel" id="fp-mode-sel">' +
+          '<button class="oly-fp-mode active" data-mode="ask">' + __("Ask") + '</button>' +
+          '<button class="oly-fp-mode" data-mode="agent">' + __("Agent") + '</button>' +
+          '<button class="oly-fp-mode" data-mode="execute">' + __("Execute") + '</button>' +
+        '</div>' +
         '<select class="oly-fp-model-sel" id="fp-model">' + model_options + '</select>' +
       '</div>' +
       /* Messages */
@@ -166,7 +178,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
           '<span class="oly-fp-attach-btn" id="fp-attach" style="cursor:pointer;color:var(--text-muted);display:flex;align-items:center;padding:4px;flex-shrink:0;" title="' + __("Attach file or image") + '">' + clip_icon + '</span>' +
           '<input type="file" id="fp-file-input" multiple accept="image/*,.pdf,.txt,.csv,.xlsx,.xls,.doc,.docx,.json,.xml,.md" style="display:none;" />' +
           '<textarea id="fp-input" rows="1" placeholder="' + __("Message AI...") + '" maxlength="4000" style="flex:1;border:none;background:transparent;color:var(--text-color);font-size:0.9rem;resize:none;min-height:24px;max-height:150px;line-height:1.5;outline:none;font-family:inherit;padding:4px 0;"></textarea>' +
-          '<span class="oly-ai-send-btn" id="fp-send" style="cursor:pointer;height:32px;width:32px;min-width:32px;border-radius:50%;background:var(--primary-color);display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + I.send + '</span>' +
+          '<span class="oly-ai-send-btn" id="fp-send" style="cursor:pointer;height:32px;width:32px;min-width:32px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + I.send + '</span>' +
         '</div>' +
         '<p style="text-align:center;font-size:0.7rem;color:var(--text-muted);margin:6px 0 0;">' + __("AI can make mistakes. Verify important information.") + '</p>' +
       '</div>' +
@@ -459,6 +471,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         session_name: sid,
         message: q,
         model: sel_model,
+        mode: current_mode,
         file_urls: file_urls.length ? JSON.stringify(file_urls) : null,
       })
         .then(function (r) {
@@ -533,6 +546,18 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   // Model selector
   $model.on("change", function () {
     current_model = $(this).val();
+  });
+  // Mode selector
+  $(document).on("click", ".oly-fp-mode", function () {
+    $(".oly-fp-mode").removeClass("active");
+    $(this).addClass("active");
+    current_mode = $(this).data("mode");
+    var placeholders = {
+      ask: __("Message AI..."),
+      agent: __("Describe what you need help with..."),
+      execute: __("What action should I execute?"),
+    };
+    $input.attr("placeholder", placeholders[current_mode] || placeholders.ask);
   });
 
   // Respond to Toggle Full Width in real-time — re-align with navbar container
