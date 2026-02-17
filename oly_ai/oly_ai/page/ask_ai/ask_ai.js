@@ -117,20 +117,15 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
 
   // ── Build Layout ──
   // Use position:fixed so the AI page sits exactly below the navbar, no overlap.
-  // Respect "Toggle Full Width" setting from Frappe
+  // Align with the navbar container so edges match the logo and profile pic.
   var navbar_h = ($(".navbar").outerHeight() || 56);
-  var is_full_width = JSON.parse(localStorage.container_fullwidth || 'false');
+  var navbar_container = document.querySelector("header.navbar > .container");
   var fp_left = '0';
   var fp_right = '0';
-  if (!is_full_width) {
-    // Frappe default container is max 1140px centered. Calculate side margins.
-    var container_max = 1140;
-    var vw = window.innerWidth;
-    if (vw > container_max) {
-      var side = Math.floor((vw - container_max) / 2);
-      fp_left = side + 'px';
-      fp_right = side + 'px';
-    }
+  if (navbar_container) {
+    var rect = navbar_container.getBoundingClientRect();
+    fp_left = Math.max(0, Math.floor(rect.left)) + 'px';
+    fp_right = Math.max(0, Math.floor(window.innerWidth - rect.right)) + 'px';
   }
   page.main.html(
     '<div class="oly-fp" id="oly-fp" style="position:fixed;top:' + navbar_h + 'px;left:' + fp_left + ';right:' + fp_right + ';bottom:0;display:flex;overflow:hidden;font-family:var(--font-stack);color:var(--text-color);background:var(--bg-color);z-index:100;border-radius:' + (is_full_width ? '0' : '0 0 0 0') + ';">' +
@@ -540,21 +535,22 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     current_model = $(this).val();
   });
 
-  // Respond to Toggle Full Width in real-time
-  $(document.body).on("toggleFullWidth", function () {
-    var fw = JSON.parse(localStorage.container_fullwidth || 'false');
-    if (fw) {
-      $fp.css({ left: '0', right: '0' });
-    } else {
-      var cmax = 1140, vw = window.innerWidth;
-      if (vw > cmax) {
-        var s = Math.floor((vw - cmax) / 2);
-        $fp.css({ left: s + 'px', right: s + 'px' });
-      } else {
-        $fp.css({ left: '0', right: '0' });
-      }
+  // Respond to Toggle Full Width in real-time — re-align with navbar container
+  function align_with_navbar() {
+    var nc = document.querySelector("header.navbar > .container");
+    if (nc) {
+      var r = nc.getBoundingClientRect();
+      $fp.css({
+        left: Math.max(0, Math.floor(r.left)) + 'px',
+        right: Math.max(0, Math.floor(window.innerWidth - r.right)) + 'px',
+      });
     }
+  }
+  $(document.body).on("toggleFullWidth", function () {
+    // Small delay so Frappe's container class change takes effect first
+    setTimeout(align_with_navbar, 50);
   });
+  $(window).on("resize", align_with_navbar);
 
   // ── Init ──
   show_welcome();
