@@ -61,8 +61,12 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   // Hide the Frappe sidebar (module sidebar) if visible
   $(wrapper).find(".layout-side-section").hide();
 
-  // Set navbar breadcrumb like other doctypes (shows "Ask AI" next to logo)
-  frappe.breadcrumbs.add("Ask AI");
+  // Set navbar breadcrumb like other pages (shows "Ask AI" next to logo)
+  frappe.breadcrumbs.add({
+    type: "Custom",
+    label: __("Ask AI"),
+    route: "/app/ask-ai",
+  });
 
   // ── User info ──
   var user_info = frappe.user_info(frappe.session.user);
