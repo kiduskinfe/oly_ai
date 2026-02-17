@@ -12,13 +12,21 @@ MODEL_COSTS = {
 	"gpt-4o": {"input": 2.50, "output": 10.00},
 	"gpt-5": {"input": 5.00, "output": 15.00},
 	"gpt-5.2": {"input": 6.00, "output": 18.00},
+	"gpt-5.3": {"input": 7.00, "output": 21.00},
 	"gpt-4-turbo": {"input": 10.00, "output": 30.00},
 	"text-embedding-3-small": {"input": 0.02, "output": 0},
 	"text-embedding-3-large": {"input": 0.13, "output": 0},
 	# Anthropic
+	"claude-3-7-sonnet-latest": {"input": 3.00, "output": 15.00},
 	"claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
 	"claude-3-5-haiku-20241022": {"input": 0.80, "output": 4.00},
 	"claude-3-opus-20240229": {"input": 15.00, "output": 75.00},
+	# Other API models (approximate placeholders)
+	"gemini-2.0-flash": {"input": 0.20, "output": 0.80},
+	"gemini-1.5-pro": {"input": 1.25, "output": 5.00},
+	"deepseek-chat": {"input": 0.27, "output": 1.10},
+	"grok-2-latest": {"input": 2.00, "output": 10.00},
+	"llama-3.3-70b-instruct": {"input": 0.79, "output": 0.79},
 	# Self-hosted (free)
 	"llama3.1": {"input": 0, "output": 0},
 	"mistral": {"input": 0, "output": 0},
