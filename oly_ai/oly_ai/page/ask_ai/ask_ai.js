@@ -457,16 +457,19 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   }
 
   function load_model_catalog() {
-    frappe.xcall("oly_ai.api.chat.get_model_catalog")
-      .then(function (res) {
+    frappe.call({
+      method: "oly_ai.api.chat.get_model_catalog",
+      callback: function (r) {
+        var res = r && r.message;
         if (!res || !res.models) return;
         available_models = res.models;
         if (res.default_model) current_model = res.default_model;
         render_model_selector_options(available_models, res.default_model);
-      })
-      .catch(function () {
+      },
+      error: function () {
         render_model_selector_options(available_models, current_model);
-      });
+      },
+    });
   }
 
   render_model_selector_options(available_models, current_model);
@@ -493,9 +496,15 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
 
   // ── Sessions ──
   function load_sessions() {
-    frappe.xcall("oly_ai.api.chat.get_sessions").then(function (data) {
-      sessions = data || [];
-      render_sessions(sessions);
+    frappe.call({
+      method: "oly_ai.api.chat.get_sessions",
+      callback: function (r) {
+        sessions = (r && r.message) || [];
+        render_sessions(sessions);
+      },
+      error: function () {
+        console.error("[Ask AI] Failed to load sessions");
+      },
     });
   }
 
@@ -584,27 +593,44 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         '<div class="oly-ai-typing"><span></span><span></span><span></span></div>' +
       '</div>'
     );
-    frappe.xcall("oly_ai.api.chat.get_messages", { session_name: name })
-      .then(function (msgs) {
+    frappe.call({
+      method: "oly_ai.api.chat.get_messages",
+      args: { session_name: name },
+      callback: function (r) {
         if (current_session !== name) return;
-        $msgs.empty();
-        if (!msgs || !msgs.length) { show_welcome(); return; }
-        msgs.forEach(function (m) {
-          if (m.role === "user") append_user_msg(m.content);
-          else append_ai_msg(m.content, m);
-        });
-        scroll_bottom();
-      })
-      .catch(function (err) {
+        try {
+          var msgs = r && r.message;
+          $msgs.empty();
+          if (!msgs || !msgs.length) { show_welcome(); return; }
+          msgs.forEach(function (m) {
+            if (m.role === "user") append_user_msg(m.content || "");
+            else append_ai_msg(m.content || "", m);
+          });
+          scroll_bottom();
+        } catch (renderErr) {
+          console.error("[Ask AI] Render error:", renderErr);
+          $msgs.html(
+            '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:0.9rem;cursor:pointer;padding:20px;text-align:center;">' +
+              '<div>' + __("Error rendering messages. Click to retry.") + '</div>' +
+              '<div style="font-size:0.75rem;margin-top:8px;color:var(--red-500);">' + frappe.utils.escape_html(String(renderErr)) + '</div>' +
+            '</div>'
+          );
+          $msgs.one("click", function () { open_session(name); });
+        }
+      },
+      error: function (r) {
         if (current_session !== name) return;
-        console.error("[Ask AI] Failed to load messages:", err);
+        var detail = (r && r.message) || (r && r._server_messages) || "";
+        console.error("[Ask AI] API error loading messages:", r, detail);
         $msgs.html(
-          '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:0.9rem;cursor:pointer;">' +
-            __("Failed to load messages. Click to retry.") +
+          '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:0.9rem;cursor:pointer;padding:20px;text-align:center;">' +
+            '<div>' + __("Failed to load messages. Click to retry.") + '</div>' +
+            (detail ? '<div style="font-size:0.75rem;margin-top:8px;color:var(--red-500);">' + frappe.utils.escape_html(String(detail)) + '</div>' : '') +
           '</div>'
         );
         $msgs.one("click", function () { open_session(name); });
-      });
+      },
+    });
   }
 
   function rename_session(name) {
@@ -881,49 +907,76 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       var file_urls = files_to_send.map(function (f) { return f.file_url; });
 
       // Use sync API — reliable, returns complete response
-      frappe.xcall("oly_ai.api.chat.send_message", {
-        session_name: sid,
-        message: q,
-        model: sel_model,
-        mode: current_mode,
-        file_urls: file_urls.length ? JSON.stringify(file_urls) : null,
-      })
-        .then(function (r) {
+      frappe.call({
+        method: "oly_ai.api.chat.send_message",
+        args: {
+          session_name: sid,
+          message: q,
+          model: sel_model,
+          mode: current_mode,
+          file_urls: file_urls.length ? JSON.stringify(file_urls) : null,
+        },
+        callback: function (r) {
           // Ignore if this request was cancelled (user clicked stop or sent another)
           if (_active_request_id !== request_id) return;
-          $("#" + lid).closest('div[style*="max-width"]').remove();
-          append_ai_msg(r.content, r);
-          if (r.pending_actions && r.pending_actions.length) {
-            render_action_cards(r.pending_actions);
+          try {
+            var data = r && r.message;
+            $("#" + lid).closest('div[style*="max-width"]').remove();
+            append_ai_msg(data.content || "", data);
+            if (data.pending_actions && data.pending_actions.length) {
+              render_action_cards(data.pending_actions);
+            }
+            scroll_bottom();
+            set_sending_state(false);
+            load_sessions();
+          } catch (renderErr) {
+            console.error("[Ask AI] Render error after send:", renderErr);
+            $("#" + lid).closest('div[style*="max-width"]').html(
+              '<div style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start;">' +
+                '<div style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--red-100);color:var(--red-600);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">!</div>' +
+                '<div style="flex:1;color:var(--red-600);font-size:0.9rem;">' + frappe.utils.escape_html(String(renderErr)) + '</div>' +
+              '</div>'
+            );
+            set_sending_state(false);
           }
-          scroll_bottom();
-          set_sending_state(false);
-          load_sessions();
-        })
-        .catch(function (err) {
+        },
+        error: function (r) {
           if (_active_request_id !== request_id) return;
+          var detail = (r && r.message) || (r && r._server_messages) || __("Something went wrong. Please try again.");
+          console.error("[Ask AI] Send error:", r, detail);
           $("#" + lid).closest('div[style*="max-width"]').html(
             '<div style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start;">' +
               '<div style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--red-100);color:var(--red-600);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">!</div>' +
-              '<div style="flex:1;color:var(--red-600);font-size:0.9rem;">' + (err.message || __("Something went wrong")) + '</div>' +
+              '<div style="flex:1;color:var(--red-600);font-size:0.9rem;">' + frappe.utils.escape_html(String(detail)) + '</div>' +
             '</div>'
           );
           set_sending_state(false);
-        });
+        },
+      });
     };
 
     if (!current_session) {
-      frappe.xcall("oly_ai.api.chat.create_session", { title: q.substring(0, 60) })
-        .then(function (s) {
+      frappe.call({
+        method: "oly_ai.api.chat.create_session",
+        args: { title: q.substring(0, 60) },
+        callback: function (r) {
+          var s = r && r.message;
+          if (!s || !s.name) {
+            set_sending_state(false);
+            frappe.show_alert({message: __("Failed to create session"), indicator: "red"});
+            return;
+          }
           current_session = s.name;
           $title.text(s.title || __("New Chat"));
           load_sessions();
           fire(s.name);
-        })
-        .catch(function (err) {
+        },
+        error: function (r) {
           set_sending_state(false);
-          frappe.show_alert({message: err.message || __("Failed to create session"), indicator: "red"});
-        });
+          var detail = (r && r.message) || __("Failed to create session");
+          frappe.show_alert({message: String(detail), indicator: "red"});
+        },
+      });
     } else {
       fire(current_session);
     }
