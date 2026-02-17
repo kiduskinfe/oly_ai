@@ -61,6 +61,9 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   // Hide the Frappe sidebar (module sidebar) if visible
   $(wrapper).find(".layout-side-section").hide();
 
+  // Set navbar breadcrumb like other doctypes (shows "Ask AI" next to logo)
+  frappe.breadcrumbs.add("Ask AI");
+
   // ── User info ──
   var user_info = frappe.user_info(frappe.session.user);
   var user_image = user_info.image;
@@ -130,12 +133,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
 
     /* Sidebar */
     '<div class="oly-fp-sidebar" id="oly-fp-sidebar" style="width:260px;min-width:260px;background:var(--card-bg);border-right:1px solid var(--dark-border-color);display:flex;flex-direction:column;overflow:hidden;">' +
-      /* Branding / page name */
-      '<div style="padding:14px 12px 6px;display:flex;align-items:center;gap:8px;">' +
-        '<span style="color:var(--primary-color);display:flex;">' + I.sparkles + '</span>' +
-        '<span style="font-weight:700;font-size:1rem;color:var(--heading-color);">' + __("Ask AI") + '</span>' +
-      '</div>' +
-      '<div style="padding:6px 12px 8px;">' +
+      '<div style="padding:14px 12px 8px;">' +
         '<button class="oly-fp-sb-new" id="fp-new" style="width:100%;display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--dark-border-color);border-radius:8px;background:transparent;color:var(--text-color);cursor:pointer;font-size:0.875rem;font-weight:500;">' +
           I.plus + '<span>' + __("New chat") + '</span>' +
         '</button>' +
