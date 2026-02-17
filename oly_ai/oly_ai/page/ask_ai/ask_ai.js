@@ -52,8 +52,14 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     document.head.appendChild(s);
   }
 
-  // Hide Frappe page-head
+  // Hide Frappe page-head and fix container to avoid navbar overlap
   $(wrapper).find(".page-head").hide();
+  // Hide all default Frappe page wrappers that add padding/scroll
+  $(wrapper).closest(".main-section").css({"margin": "0", "padding": "0"});
+  $(wrapper).closest(".container-fluid").css({"padding": "0"});
+  $(".page-body").css({"margin-top": "0"});
+  // Hide the Frappe sidebar (module sidebar) if visible
+  $(wrapper).find(".layout-side-section").hide();
 
   // ── User info ──
   var user_info = frappe.user_info(frappe.session.user);
@@ -103,8 +109,10 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   var clip_icon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>';
 
   // ── Build Layout ──
+  // Use position:fixed so the AI page sits exactly below the navbar, no overlap.
+  var navbar_h = ($(".navbar").outerHeight() || 56);
   page.main.html(
-    '<div class="oly-fp" id="oly-fp" style="display:flex;height:calc(100vh - 56px);margin:-15px;overflow:hidden;font-family:var(--font-stack);color:var(--text-color);background:var(--bg-color);">' +
+    '<div class="oly-fp" id="oly-fp" style="position:fixed;top:' + navbar_h + 'px;left:0;right:0;bottom:0;display:flex;overflow:hidden;font-family:var(--font-stack);color:var(--text-color);background:var(--bg-color);z-index:100;">' +
 
     /* Sidebar */
     '<div class="oly-fp-sidebar" id="oly-fp-sidebar" style="width:260px;min-width:260px;background:var(--card-bg);border-right:1px solid var(--dark-border-color);display:flex;flex-direction:column;overflow:hidden;">' +
