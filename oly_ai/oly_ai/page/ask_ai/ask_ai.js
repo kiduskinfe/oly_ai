@@ -142,6 +142,8 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     { value: 'gpt-4o-mini', label: 'GPT-4o Mini', group: 'Fast' },
     { value: 'gpt-4.1', label: 'GPT-4.1', group: 'Advanced' },
     { value: 'gpt-4o', label: 'GPT-4o', group: 'Advanced' },
+    { value: 'gpt-5', label: 'GPT-5', group: 'Advanced' },
+    { value: 'gpt-5.2', label: 'GPT-5.2', group: 'Advanced' },
     { value: 'o4-mini', label: 'o4-mini', group: 'Reasoning' },
     { value: 'o3-mini', label: 'o3-mini', group: 'Reasoning' },
     { value: 'o3', label: 'o3', group: 'Reasoning' },
@@ -409,8 +411,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       var fd = new FormData();
       fd.append('file', file, file.name);
       fd.append('is_private', '0');
-      fd.append('folder', 'Home');
-      fd.append('doctype', 'AI Chat Session');
+      fd.append('folder', 'Home/Attachments');
 
       $.ajax({
         type: 'POST',

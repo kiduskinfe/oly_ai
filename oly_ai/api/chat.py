@@ -333,9 +333,45 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 		try:
 			result = _generate_image_internal(session, message, user, settings)
 			return result
-		except Exception:
-			# If image generation fails, fall through to normal chat
-			session.reload()
+		except Exception as e:
+			# Do not silently fall back to text chat; return a clear image-generation error.
+			error_message = str(e)
+			friendly = (
+				"I tried to generate the image, but the image API request failed.\n\n"
+				f"Error: {error_message}\n\n"
+				"Please verify:\n"
+				"1. AI provider is OpenAI (or OpenAI-compatible with /images/generations support)\n"
+				"2. The API key has image-generation access\n"
+				"3. Model 'dall-e-3' is available for your account\n"
+				"4. Network can reach the provider endpoint\n\n"
+				"Once fixed, send your prompt again and I will generate the image directly."
+			)
+
+			session.append("messages", {"role": "user", "content": message})
+			session.append("messages", {
+				"role": "assistant",
+				"content": friendly,
+				"model": "dall-e-3",
+				"cost": 0,
+				"response_time": 0,
+			})
+
+			if session.title == "New Chat":
+				session.title = message[:60] + ("..." if len(message) > 60 else "")
+
+			session.flags.ignore_permissions = True
+			session.save()
+			frappe.db.commit()
+
+			return {
+				"content": friendly,
+				"model": "dall-e-3",
+				"cost": 0,
+				"tokens": 0,
+				"response_time": 0,
+				"sources": [],
+				"session_title": session.title,
+			}
 
 	# Add user message to session
 	session.append("messages", {"role": "user", "content": message})
@@ -574,7 +610,9 @@ def delete_session(session_name):
 _IMAGE_GEN_PATTERNS = [
 	r"\b(generate|create|make|draw|design|produce|render)\b.*\b(image|picture|photo|illustration|artwork|logo|icon|banner|poster|graphic|diagram|visual)\b",
 	r"\b(image|picture|photo|illustration|artwork|logo|icon|banner|poster|graphic)\b.*\b(of|for|showing|depicting|with)\b",
-	r"^(generate|create|make|draw|design)\b",
+	r"^(generate|create|make|draw|design|render)\b",
+	r"\b(generate|create|make|design|draw|render)\s+(the\s+)?(image|logo|banner|poster|art|artwork|illustration)\b",
+	r"\bdall[\s\-]?e\b",
 ]
 _IMAGE_GEN_RE = re.compile("|".join(_IMAGE_GEN_PATTERNS), re.IGNORECASE)
 
