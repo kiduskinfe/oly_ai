@@ -96,6 +96,14 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       '.ai-tool-indicator{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--control-bg);border:1px solid var(--dark-border-color);border-radius:8px;font-size:0.8rem;color:var(--text-muted);margin:4px 0;animation:oly-msg-in 0.2s ease;}',
       '.ai-tool-indicator svg{animation:ai-spin 1s linear infinite;width:14px;height:14px;}',
       '@keyframes ai-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}',
+      /* drag & drop overlay */
+      '.oly-fp-drop-overlay{position:absolute;inset:0;background:rgba(var(--primary-color-rgb,59,130,246),0.08);border:2px dashed var(--primary-color);border-radius:12px;z-index:50;display:flex;align-items:center;justify-content:center;pointer-events:none;animation:oly-msg-in 0.15s ease;}',
+      '.oly-fp-drop-overlay span{background:var(--card-bg);padding:12px 24px;border-radius:12px;font-size:0.95rem;font-weight:600;color:var(--primary-color);box-shadow:0 4px 12px rgba(0,0,0,0.1);display:flex;align-items:center;gap:8px;}',
+      '.oly-fp-drop-overlay svg{width:20px;height:20px;stroke:var(--primary-color);}',
+      '.oly-fp-input-bar.drag-over{border-color:var(--primary-color) !important;background:rgba(var(--primary-color-rgb,59,130,246),0.04) !important;}',
+      /* uploading indicator */
+      '.oly-fp-uploading{display:flex;align-items:center;gap:6px;padding:6px 12px;font-size:0.8rem;color:var(--text-muted);}',
+      '.oly-fp-uploading .spinner{width:14px;height:14px;border:2px solid var(--dark-border-color);border-top-color:var(--primary-color);border-radius:50%;animation:ai-spin 0.6s linear infinite;}',
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -226,7 +234,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         '<div id="fp-attach-preview" class="oly-fp-attach-preview" style="max-width:850px;margin:0 auto;"></div>' +
         '<div class="oly-fp-input-bar" style="max-width:850px;margin:0 auto;display:flex;align-items:flex-end;gap:8px;border:1px solid var(--dark-border-color);border-radius:16px;padding:8px 12px;background:var(--control-bg);">' +
           '<span class="oly-fp-attach-btn" id="fp-attach" style="cursor:pointer;color:var(--text-muted);display:flex;align-items:center;padding:4px;flex-shrink:0;" title="' + __("Attach file or image") + '">' + clip_icon + '</span>' +
-          '<input type="file" id="fp-file-input" multiple accept="image/*,.pdf,.txt,.csv,.xlsx,.xls,.doc,.docx,.json,.xml,.md" style="display:none;" />' +
+          '<input type="file" id="fp-file-input" multiple accept="image/*,.pdf,.txt,.csv,.xlsx,.xls,.doc,.docx,.json,.xml,.md,.ppt,.pptx" style="display:none;" />' +
           '<textarea id="fp-input" rows="1" placeholder="' + __("Message AI...") + '" maxlength="4000" style="flex:1;border:none;background:transparent;color:var(--text-color);font-size:0.9rem;resize:none;min-height:24px;max-height:150px;line-height:1.5;outline:none;font-family:inherit;padding:4px 0;"></textarea>' +
           '<span class="oly-ai-send-btn" id="fp-send" style="cursor:pointer;height:32px;width:32px;min-width:32px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + I.send + '</span>' +
         '</div>' +
@@ -861,6 +869,122 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     // Reset so same file can be re-selected
     $("#fp-file-input").val("");
   });
+
+  // ── Drag & Drop support ──
+  var drop_icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>';
+  var drag_counter = 0;
+  var $main_area = $fp.find('.oly-fp-main');
+  var $input_bar = $fp.find('.oly-fp-input-bar');
+
+  // Prevent default browser drag behavior on the whole page
+  $main_area.on('dragenter', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    drag_counter++;
+    if (drag_counter === 1) {
+      // Show drop overlay
+      if (!$main_area.find('.oly-fp-drop-overlay').length) {
+        $main_area.css('position', 'relative');
+        $main_area.append('<div class="oly-fp-drop-overlay"><span>' + drop_icon + __('Drop files here') + '</span></div>');
+      }
+      $input_bar.addClass('drag-over');
+    }
+  });
+
+  $main_area.on('dragover', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  $main_area.on('dragleave', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    drag_counter--;
+    if (drag_counter <= 0) {
+      drag_counter = 0;
+      $main_area.find('.oly-fp-drop-overlay').remove();
+      $input_bar.removeClass('drag-over');
+    }
+  });
+
+  $main_area.on('drop', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    drag_counter = 0;
+    $main_area.find('.oly-fp-drop-overlay').remove();
+    $input_bar.removeClass('drag-over');
+
+    var dt = e.originalEvent.dataTransfer;
+    if (!dt || !dt.files || !dt.files.length) return;
+    handle_dropped_files(dt.files);
+  });
+
+  // ── Clipboard paste support (Ctrl+V / Cmd+V) ──
+  $input.on('paste', function (e) {
+    var cd = e.originalEvent.clipboardData;
+    if (!cd || !cd.items) return;
+
+    var dominated_by_files = false;
+    var paste_files = [];
+
+    for (var i = 0; i < cd.items.length; i++) {
+      var item = cd.items[i];
+      if (item.kind === 'file') {
+        var file = item.getAsFile();
+        if (file) {
+          paste_files.push(file);
+          dominated_by_files = true;
+        }
+      }
+    }
+
+    if (dominated_by_files && paste_files.length) {
+      e.preventDefault(); // prevent pasting file name as text
+      handle_dropped_files(paste_files);
+    }
+    // If no files, let normal text paste happen
+  });
+
+  function handle_dropped_files(file_list) {
+    var valid_files = [];
+    var accepted = /\.(jpg|jpeg|png|gif|webp|bmp|svg|pdf|txt|csv|xlsx|xls|doc|docx|json|xml|md|pptx|ppt)$/i;
+    var max_size = 20 * 1024 * 1024; // 20MB
+
+    for (var i = 0; i < file_list.length; i++) {
+      var f = file_list[i];
+      // Accept images by mime or known extensions
+      if (f.type && f.type.startsWith('image/')) {
+        valid_files.push(f);
+      } else if (accepted.test(f.name)) {
+        valid_files.push(f);
+      } else {
+        frappe.show_alert({ message: __('Unsupported file type: {0}', [f.name]), indicator: 'orange' });
+        continue;
+      }
+      if (f.size > max_size) {
+        frappe.show_alert({ message: __('File too large (max 20MB): {0}', [f.name]), indicator: 'orange' });
+        valid_files.pop();
+      }
+    }
+
+    if (!valid_files.length) return;
+
+    // Show uploading indicator
+    $attach_preview.append('<div class="oly-fp-uploading" id="fp-uploading"><div class="spinner"></div>' + __('Uploading {0} file(s)...', [valid_files.length]) + '</div>');
+
+    var promises = valid_files.map(function (f) { return upload_file(f); });
+    Promise.all(promises).then(function (uploaded) {
+      $('#fp-uploading').remove();
+      attached_files = attached_files.concat(uploaded);
+      render_attachments();
+      frappe.show_alert({ message: __('Attached {0} file(s)', [uploaded.length]), indicator: 'green' });
+      $input.focus();
+    }).catch(function () {
+      $('#fp-uploading').remove();
+      frappe.show_alert({ message: __('Failed to upload file(s)'), indicator: 'red' });
+    });
+  }
+
   // Model selector
   $model.on("change", function () {
     current_model = $(this).val();
