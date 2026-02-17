@@ -30,19 +30,24 @@ oly_ai.ICON = ICON;
 // ─── Markdown Helper ─────────────────────────────────────────
 oly_ai.render_markdown = function (md) {
   if (!md) return "";
-  if (!oly_ai._md_converter) {
-    oly_ai._md_converter = new showdown.Converter({
-      tables: true,
-      tasklists: true,
-      strikethrough: true,
-      ghCodeBlocks: true,
-      smoothLivePreview: true,
-      openLinksInNewWindow: true,
-      simpleLineBreaks: false,
-      headerLevelStart: 2,
-    });
+  // Ensure frappe.md2html converter is initialized (auto-created on first
+  // call to frappe.markdown), then configure extra features once.
+  if (!oly_ai._md_configured) {
+    // Trigger lazy init of frappe.md2html
+    frappe.markdown("init");
+    if (frappe.md2html && frappe.md2html.setOption) {
+      frappe.md2html.setOption("tables", true);
+      frappe.md2html.setOption("tasklists", true);
+      frappe.md2html.setOption("strikethrough", true);
+      frappe.md2html.setOption("ghCodeBlocks", true);
+      frappe.md2html.setOption("smoothLivePreview", true);
+      frappe.md2html.setOption("openLinksInNewWindow", true);
+      frappe.md2html.setOption("simpleLineBreaks", false);
+      frappe.md2html.setOption("headerLevelStart", 2);
+    }
+    oly_ai._md_configured = true;
   }
-  return '<div class="ai-md">' + oly_ai._md_converter.makeHtml(md) + "</div>";
+  return '<div class="ai-md">' + frappe.md2html.makeHtml(md) + "</div>";
 };
 
 // ─── Meta Bar (for dialogs) ─────────────────────────────────
