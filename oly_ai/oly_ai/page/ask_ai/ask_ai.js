@@ -184,6 +184,8 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   var stream_poll_timer = null;  // polling fallback timer
   var stream_poll_session = null; // session being polled
   var stream_poll_msg_count = 0;  // message count when stream started
+  var _sending_safety_timer = null;  // safety timer to re-enable input
+  var _active_request_id = null;    // tracks active request for cancellation
 
   var I = oly_ai.ICON;
 
@@ -193,6 +195,11 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   // ── Sending state management ──
   function set_sending_state(is_sending) {
     sending = is_sending;
+    // Clear any existing safety timer
+    if (_sending_safety_timer) {
+      clearTimeout(_sending_safety_timer);
+      _sending_safety_timer = null;
+    }
     var $btn = $("#fp-send");
     var $inp = $("#fp-input");
     if (is_sending) {
@@ -202,6 +209,13 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       );
       $("#fp-send").on("click", stop_generation);
       $inp.prop("disabled", true).css("opacity", "0.5");
+      // Safety timer — re-enable input after 120s no matter what
+      _sending_safety_timer = setTimeout(function () {
+        if (sending) {
+          console.warn("[Ask AI] Safety timeout: re-enabling input after 120s");
+          set_sending_state(false);
+        }
+      }, 120000);
     } else {
       // Restore send button
       var $cur = $("#fp-send");
@@ -217,9 +231,12 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
 
   function stop_generation() {
     if (!sending) return;
-    // Stop polling fallback
     _stop_poll();
-    // Stop streaming — clear buffer and remove cursor
+    // Invalidate active request so its response is ignored
+    _active_request_id = null;
+    // Remove typing indicator if present
+    $msgs.find('.oly-ai-typing').closest('div[style*="max-width"]').last().remove();
+    // Also handle streaming if active
     if (stream_task_id) {
       var $el = $("#stream-content-" + stream_task_id);
       if ($el.length) {
@@ -230,9 +247,6 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
             oly_ai.render_markdown(partial) +
             '<div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px;">⏹ ' + __("Generation stopped") + '</div>'
           );
-        } else {
-          // No content received — check DB for response
-          _recover_from_db(stream_task_id);
         }
       }
       delete stream_buffer[stream_task_id];
@@ -538,6 +552,12 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
 
   function new_chat() {
     current_session = null;
+    // Reset sending state if stuck from a previous request
+    if (sending) {
+      _stop_poll();
+      _active_request_id = null;
+      set_sending_state(false);
+    }
     $title.text(__("New Chat"));
     show_welcome();
     clear_attachments();
@@ -548,19 +568,43 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   function open_session(name) {
     current_session = name;
     clear_attachments();
+    // Reset sending state if stuck from a previous request
+    if (sending) {
+      _stop_poll();
+      _active_request_id = null;
+      set_sending_state(false);
+    }
     $list.find(".oly-fp-sb-item").removeClass("active");
     $list.find('[data-name="' + name + '"]').first().addClass("active");
     var s = sessions.find(function (x) { return x.name === name; });
     $title.text(s ? s.title : __("Chat"));
-    frappe.xcall("oly_ai.api.chat.get_messages", { session_name: name }).then(function (msgs) {
-      $msgs.empty();
-      if (!msgs || !msgs.length) { show_welcome(); return; }
-      msgs.forEach(function (m) {
-        if (m.role === "user") append_user_msg(m.content);
-        else append_ai_msg(m.content, m);
+    // Show loading indicator
+    $msgs.html(
+      '<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:40px;">' +
+        '<div class="oly-ai-typing"><span></span><span></span><span></span></div>' +
+      '</div>'
+    );
+    frappe.xcall("oly_ai.api.chat.get_messages", { session_name: name })
+      .then(function (msgs) {
+        if (current_session !== name) return;
+        $msgs.empty();
+        if (!msgs || !msgs.length) { show_welcome(); return; }
+        msgs.forEach(function (m) {
+          if (m.role === "user") append_user_msg(m.content);
+          else append_ai_msg(m.content, m);
+        });
+        scroll_bottom();
+      })
+      .catch(function (err) {
+        if (current_session !== name) return;
+        console.error("[Ask AI] Failed to load messages:", err);
+        $msgs.html(
+          '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:0.9rem;cursor:pointer;">' +
+            __("Failed to load messages. Click to retry.") +
+          '</div>'
+        );
+        $msgs.one("click", function () { open_session(name); });
       });
-      scroll_bottom();
-    });
   }
 
   function rename_session(name) {
@@ -794,7 +838,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     });
   }
 
-  // ── Send (with streaming support) ──
+  // ── Send message ──
   function send_message() {
     var q = $input.val().trim();
     if (!q || sending) return;
@@ -804,10 +848,11 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     var files_to_send = attached_files.slice();
     clear_attachments();
     var sel_model = $model.val();
+    var request_id = "req-" + Date.now();
+    _active_request_id = request_id;
 
     var fire = function (sid) {
-      $msgs.find('[style*="justify-content:center"]').closest('div[style*="max-width"]').parent().find('[style*="justify-content:center"]').closest('div[style*="height:100%"]').remove();
-      // Simpler: just remove welcome
+      // Remove welcome screen
       $msgs.children().filter(function () { return $(this).find('.oly-ai-chip').length > 0 || $(this).find('h3').length > 0; }).remove();
 
       append_user_msg(q);
@@ -835,42 +880,8 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
 
       var file_urls = files_to_send.map(function (f) { return f.file_url; });
 
-      // Image generation uses non-streaming path (backend auto-routes to DALL·E)
-      if (is_image_request(q) && !file_urls.length) {
-        frappe.xcall("oly_ai.api.chat.send_message", {
-          session_name: sid,
-          message: q,
-          model: sel_model,
-          mode: current_mode,
-          file_urls: null,
-        })
-          .then(function (r) {
-            $("#" + lid).closest('div[style*="max-width"]').remove();
-            append_ai_msg(r.content, r);
-            if (r.pending_actions && r.pending_actions.length) {
-              render_action_cards(r.pending_actions);
-            }
-            scroll_bottom();
-            set_sending_state(false);
-            load_sessions();
-          })
-          .catch(function (err) {
-            $("#" + lid).closest('div[style*="max-width"]').html(
-              '<div style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start;">' +
-                '<div style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--red-100);color:var(--red-600);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">!</div>' +
-                '<div style="flex:1;color:var(--red-600);font-size:0.9rem;">' + (err.message || __("Image generation failed")) + '</div>' +
-              '</div>'
-            );
-            set_sending_state(false);
-          });
-        return;
-      }
-
-      // Count current messages so poll fallback can detect new ones
-      var pre_send_msg_count = $msgs.find('.oly-fp-user-bubble').length + $msgs.find('.oly-fp-ai-avatar').length;
-
-      // Try streaming first, fall back to sync
-      frappe.xcall("oly_ai.api.stream.send_message_stream", {
+      // Use sync API — reliable, returns complete response
+      frappe.xcall("oly_ai.api.chat.send_message", {
         session_name: sid,
         message: q,
         model: sel_model,
@@ -878,53 +889,26 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         file_urls: file_urls.length ? JSON.stringify(file_urls) : null,
       })
         .then(function (r) {
-          stream_task_id = r.task_id;
-          // Replace typing indicator with empty streaming container
+          // Ignore if this request was cancelled (user clicked stop or sent another)
+          if (_active_request_id !== request_id) return;
+          $("#" + lid).closest('div[style*="max-width"]').remove();
+          append_ai_msg(r.content, r);
+          if (r.pending_actions && r.pending_actions.length) {
+            render_action_cards(r.pending_actions);
+          }
+          scroll_bottom();
+          set_sending_state(false);
+          load_sessions();
+        })
+        .catch(function (err) {
+          if (_active_request_id !== request_id) return;
           $("#" + lid).closest('div[style*="max-width"]').html(
             '<div style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start;">' +
-              '<div class="oly-fp-ai-avatar" style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + I.sparkles + '</div>' +
-              '<div id="stream-content-' + r.task_id + '" class="ai-streaming-cursor" style="flex:1;min-width:0;"></div>' +
+              '<div style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--red-100);color:var(--red-600);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">!</div>' +
+              '<div style="flex:1;color:var(--red-600);font-size:0.9rem;">' + (err.message || __("Something went wrong")) + '</div>' +
             '</div>'
           );
-          scroll_bottom();
-          // Start polling fallback — if realtime events don't arrive, fetch from DB
-          frappe.xcall("oly_ai.api.chat.get_messages", { session_name: sid })
-            .then(function (msgs) {
-              _start_poll(sid, r.task_id, msgs ? msgs.length : 0);
-            })
-            .catch(function () {
-              // Even if count fails, start poll with estimate
-              _start_poll(sid, r.task_id, pre_send_msg_count);
-            });
-        })
-        .catch(function () {
-          // Fallback to non-streaming API
-          frappe.xcall("oly_ai.api.chat.send_message", {
-            session_name: sid,
-            message: q,
-            model: sel_model,
-            mode: current_mode,
-            file_urls: file_urls.length ? JSON.stringify(file_urls) : null,
-          })
-            .then(function (r) {
-              $("#" + lid).closest('div[style*="max-width"]').remove();
-              append_ai_msg(r.content, r);
-              if (r.pending_actions && r.pending_actions.length) {
-                render_action_cards(r.pending_actions);
-              }
-              scroll_bottom();
-              set_sending_state(false);
-              load_sessions();
-            })
-            .catch(function (err) {
-              $("#" + lid).closest('div[style*="max-width"]').html(
-                '<div style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start;">' +
-                  '<div style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--red-100);color:var(--red-600);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">!</div>' +
-                  '<div style="flex:1;color:var(--red-600);font-size:0.9rem;">' + (err.message || __("Something went wrong")) + '</div>' +
-                '</div>'
-              );
-              set_sending_state(false);
-            });
+          set_sending_state(false);
         });
     };
 
@@ -935,6 +919,10 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
           $title.text(s.title || __("New Chat"));
           load_sessions();
           fire(s.name);
+        })
+        .catch(function (err) {
+          set_sending_state(false);
+          frappe.show_alert({message: err.message || __("Failed to create session"), indicator: "red"});
         });
     } else {
       fire(current_session);
