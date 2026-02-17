@@ -192,6 +192,16 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 	# Load the session
 	session = frappe.get_doc("AI Chat Session", session_name)
 
+	# Auto-detect image generation requests BEFORE adding user message
+	# (to avoid duplicate messages when routing to image generation)
+	if _is_image_request(message) and not (file_urls and json.loads(file_urls) if isinstance(file_urls, str) else file_urls):
+		try:
+			result = _generate_image_internal(session, message, user, settings)
+			return result
+		except Exception:
+			# If image generation fails, fall through to normal chat
+			session.reload()
+
 	# Add user message to session
 	session.append("messages", {"role": "user", "content": message})
 
@@ -363,18 +373,6 @@ Rules:
 	# Determine model: use per-request override, else session/settings default
 	model = model or settings.default_model
 
-	# Auto-detect image generation requests
-	if _is_image_request(message) and not parsed_files:
-		try:
-			# Route to image generation instead of chat
-			img_result = generate_image(session_name, message)
-			return img_result
-		except Exception:
-			# If image generation fails, fall through to normal chat
-			# Reload session since generate_image may have modified it
-			session.reload()
-			pass
-
 	try:
 		provider = LLMProvider(settings)
 		result = provider.chat(llm_messages, model=model)
@@ -505,6 +503,70 @@ def _save_generated_image(image_url, prompt, user):
 	except Exception:
 		# If saving fails, return the original URL (temporary, expires in ~1hr)
 		return image_url
+
+
+def _generate_image_internal(session, prompt, user, settings, size="1024x1024", quality="standard"):
+	"""Internal image generation — called from send_message auto-detect.
+
+	Unlike generate_image(), this receives an already-loaded session
+	and handles user message addition to avoid duplicates.
+	"""
+	# Add user message
+	session.append("messages", {"role": "user", "content": prompt})
+
+	start_time = time.time()
+
+	provider = LLMProvider(settings)
+	result = provider.generate_image(
+		prompt=prompt,
+		model="dall-e-3",
+		size=size,
+		quality=quality,
+	)
+
+	response_time = round(time.time() - start_time, 2)
+
+	# Save image to Frappe files so it persists
+	local_url = _save_generated_image(result["url"], prompt, user)
+
+	# Estimate cost
+	cost_map = {
+		"standard": {"1024x1024": 0.04, "1024x1792": 0.08, "1792x1024": 0.08},
+		"hd": {"1024x1024": 0.08, "1024x1792": 0.12, "1792x1024": 0.12},
+	}
+	estimated_cost = cost_map.get(quality, {}).get(size, 0.04)
+
+	content = f"Here's the generated image:\n\n![Generated Image]({local_url})\n\n"
+	if result.get("revised_prompt") and result["revised_prompt"] != prompt:
+		content += f"*Refined prompt: {result['revised_prompt']}*"
+
+	session.append("messages", {
+		"role": "assistant",
+		"content": content,
+		"model": "dall-e-3",
+		"cost": estimated_cost,
+		"response_time": response_time,
+	})
+
+	session.total_cost = (session.total_cost or 0) + estimated_cost
+
+	if session.title == "New Chat":
+		session.title = prompt[:60] + ("..." if len(prompt) > 60 else "")
+
+	session.flags.ignore_permissions = True
+	session.save()
+	frappe.db.commit()
+
+	return {
+		"content": content,
+		"image_url": local_url,
+		"revised_prompt": result.get("revised_prompt", prompt),
+		"model": "dall-e-3",
+		"cost": estimated_cost,
+		"response_time": response_time,
+		"type": "image",
+		"session_title": session.title,
+	}
 
 
 @frappe.whitelist()
