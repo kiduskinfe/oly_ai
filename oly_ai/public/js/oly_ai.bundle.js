@@ -251,10 +251,10 @@ oly_ai.Panel = class {
     this.$bubble.html(this.open_bubble_html);
     this.$app.append(this.$bubble);
 
-    // 4. Navbar icon — explicit color so it's visible in both light and dark themes
+    // 4. Navbar icon — uses text-muted class like Frappe's notification/chat icons
     var navbar_icon_html =
-      '<li class="nav-item dropdown dropdown-notifications dropdown-mobile oly-ai-nav" title="' + __('AI Assistant') + '" style="cursor:pointer;display:flex;align-items:center;color:var(--gray-600);">' +
-      ICON.sparkles +
+      '<li class="nav-item dropdown dropdown-notifications dropdown-mobile oly-ai-nav" title="' + __('AI Assistant') + '" style="cursor:pointer;display:flex;align-items:center;">' +
+      '<span class="btn-reset nav-link notifications-icon text-muted" style="padding:0;display:flex;">' + ICON.sparkles + '</span>' +
       '</li>';
 
     if (this.is_desk) {
