@@ -208,7 +208,8 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         '<span class="oly-fp-stop-btn" id="fp-send" title="' + __("Stop generating") + '">' + stop_icon + '</span>'
       );
       $("#fp-send").on("click", stop_generation);
-      $inp.prop("disabled", true).css("opacity", "0.5");
+      // Keep input enabled so user can type their next message while AI responds
+      $inp.attr("placeholder", __("Type your next message..."));
       // Safety timer — re-enable input after 120s no matter what
       _sending_safety_timer = setTimeout(function () {
         if (sending) {
@@ -223,7 +224,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         '<span class="oly-ai-send-btn" id="fp-send" style="cursor:pointer;height:32px;width:32px;min-width:32px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + I.send + '</span>'
       );
       $("#fp-send").on("click", send_message);
-      $inp.prop("disabled", false).css("opacity", "1");
+      $inp.attr("placeholder", __("Message AI..."));
     }
     // Update cached reference
     $send = $("#fp-send");
