@@ -437,6 +437,8 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 
 	# Determine model: use per-request override, else session/settings default
 	model = model or settings.default_model
+	requested_model = model
+	model_fallback_used = False
 
 	# Get available tools for this mode
 	tools = None
@@ -460,7 +462,15 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 		pending_actions = []  # Track action requests for approval
 
 		for _round in range(MAX_TOOL_ROUNDS):
-			result = provider.chat(llm_messages, model=model, tools=tools)
+			try:
+				result = provider.chat(llm_messages, model=model, tools=tools)
+			except Exception as e:
+				fallback = _get_fallback_model(model, settings)
+				if fallback and (not model_fallback_used) and _is_model_unavailable_error(e):
+					model = fallback
+					model_fallback_used = True
+					continue
+				raise
 			total_input_tokens += result.get("tokens_input", 0)
 			total_output_tokens += result.get("tokens_output", 0)
 
@@ -510,8 +520,13 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 
 		# Final response content
 		final_content = result.get("content") or ""
+		if model_fallback_used and requested_model != model:
+			final_content = (
+				f"⚠️ Requested model '{requested_model}' is not available for this API key/provider. "
+				f"Used '{result.get('model') or model}' instead.\n\n" + final_content
+			)
 
-		cost = track_usage(model, total_input_tokens, total_output_tokens, user)
+		cost = track_usage(result.get("model") or model, total_input_tokens, total_output_tokens, user)
 
 		# Add assistant response to session
 		session.append("messages", {
@@ -547,7 +562,7 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 		try:
 			from oly_ai.api.gateway import _log_audit
 			_log_audit(
-				user, "Ask AI", "", "", model,
+				user, "Ask AI", "", "", result.get("model") or model,
 				message, final_content,
 				total_input_tokens, total_output_tokens,
 				cost, result["response_time"], "Success",
@@ -615,6 +630,28 @@ _IMAGE_GEN_PATTERNS = [
 	r"\bdall[\s\-]?e\b",
 ]
 _IMAGE_GEN_RE = re.compile("|".join(_IMAGE_GEN_PATTERNS), re.IGNORECASE)
+
+
+def _is_model_unavailable_error(exc):
+	"""Return True if exception indicates invalid/inaccessible model."""
+	msg = str(exc).lower()
+	model_hints = [
+		"model",
+		"does not exist",
+		"do not have access",
+		"not found",
+		"invalid model",
+		"unknown model",
+	]
+	return all(h in msg for h in ("model",)) and any(h in msg for h in model_hints[1:])
+
+
+def _get_fallback_model(requested_model, settings):
+	"""Pick a fallback model when requested model is unavailable."""
+	fallback = settings.default_model or "gpt-4o-mini"
+	if fallback == requested_model:
+		return None
+	return fallback
 
 
 def _is_image_request(message):

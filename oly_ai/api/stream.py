@@ -13,6 +13,20 @@ from oly_ai.core.provider import LLMProvider
 from oly_ai.core.cost_tracker import check_budget, track_usage
 
 
+def _is_model_unavailable_error(exc):
+	"""Return True if exception indicates invalid/inaccessible model."""
+	msg = str(exc).lower()
+	keywords = ["does not exist", "do not have access", "invalid model", "unknown model", "not found"]
+	return "model" in msg and any(k in msg for k in keywords)
+
+
+def _get_fallback_model(requested_model, settings):
+	fallback = settings.default_model or "gpt-4o-mini"
+	if fallback == requested_model:
+		return None
+	return fallback
+
+
 @frappe.whitelist()
 def send_message_stream(session_name, message, model=None, mode=None, file_urls=None):
 	"""Send a message and stream the response via realtime events.
@@ -180,40 +194,68 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 
 		provider = LLMProvider(settings)
 		start_time = time.time()
+		requested_model = model
 
 		# If tools are available, we can't stream the tool-calling loop easily.
 		# Fall back to non-streaming for tool calling rounds, stream the final response.
 		if tools:
-			_process_with_tools(
-				task_id, provider, llm_messages, model, tools,
-				user, session, session_name, sources, start_time, mode,
-			)
-			return
+			try:
+				_process_with_tools(
+					task_id, provider, llm_messages, model, tools,
+					user, session, session_name, sources, start_time, mode,
+				)
+				return
+			except Exception as e:
+				fallback = _get_fallback_model(model, settings)
+				if fallback and _is_model_unavailable_error(e):
+					_process_with_tools(
+						task_id, provider, llm_messages, fallback, tools,
+						user, session, session_name, sources, start_time, mode,
+						requested_model=requested_model,
+					)
+					return
+				raise
 
 		# Stream the response
 		full_content = ""
 		tokens_input = 0
 		tokens_output = 0
 
-		try:
-			for event in provider.chat_stream(llm_messages, model=model):
+		def _run_stream(cur_model):
+			full = ""
+			t_in = 0
+			t_out = 0
+			for event in provider.chat_stream(llm_messages, model=cur_model):
 				if event["type"] == "chunk":
-					full_content += event["content"]
+					full += event["content"]
 					frappe.publish_realtime(
 						"ai_chunk",
 						{"task_id": task_id, "chunk": event["content"]},
 						user=user,
 					)
 				elif event["type"] == "usage":
-					tokens_input = event["usage"].get("prompt_tokens", 0)
-					tokens_output = event["usage"].get("completion_tokens", 0)
+					t_in = event["usage"].get("prompt_tokens", 0)
+					t_out = event["usage"].get("completion_tokens", 0)
+			return full, t_in, t_out
+
+		try:
+			full_content, tokens_input, tokens_output = _run_stream(model)
 		except Exception as e:
-			frappe.publish_realtime(
-				"ai_error",
-				{"task_id": task_id, "error": str(e)},
-				user=user,
-			)
-			return
+			fallback = _get_fallback_model(model, settings)
+			if fallback and _is_model_unavailable_error(e):
+				model = fallback
+				full_content, tokens_input, tokens_output = _run_stream(model)
+				full_content = (
+					f"⚠️ Requested model '{requested_model}' is not available for this API key/provider. "
+					f"Used '{model}' instead.\n\n" + full_content
+				)
+			else:
+				frappe.publish_realtime(
+					"ai_error",
+					{"task_id": task_id, "error": str(e)},
+					user=user,
+				)
+				return
 
 		response_time = round(time.time() - start_time, 2)
 		cost = track_usage(model, tokens_input, tokens_output, user)
@@ -267,7 +309,7 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 		frappe.log_error(f"Stream error: {e}", "AI Stream")
 
 
-def _process_with_tools(task_id, provider, llm_messages, model, tools, user, session, session_name, sources, start_time, mode):
+def _process_with_tools(task_id, provider, llm_messages, model, tools, user, session, session_name, sources, start_time, mode, requested_model=None):
 	"""Handle tool-calling flow: run tool rounds non-streamed, then stream the final response."""
 	from oly_ai.core.tools import execute_tool
 
@@ -351,6 +393,11 @@ def _process_with_tools(task_id, provider, llm_messages, model, tools, user, ses
 
 	response_time = round(time.time() - start_time, 2)
 	cost = track_usage(model, total_input_tokens, total_output_tokens, user)
+	if requested_model and requested_model != model:
+		final_content = (
+			f"⚠️ Requested model '{requested_model}' is not available for this API key/provider. "
+			f"Used '{model}' instead.\n\n" + final_content
+		)
 
 	# Save to session
 	session.reload()
