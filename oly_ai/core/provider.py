@@ -70,6 +70,23 @@ class LLMProvider:
 		result["model"] = model
 		return result
 
+	@staticmethod
+	def _needs_new_params(model):
+		"""Return True if model requires max_completion_tokens instead of max_tokens.
+
+		Newer OpenAI models (o-series, GPT-5.x) use max_completion_tokens
+		and may not support temperature/top_p.
+		"""
+		m = (model or "").lower()
+		# o-series reasoning models + GPT-5 family
+		return m.startswith(("o1", "o3", "o4", "gpt-5"))
+
+	@staticmethod
+	def _is_reasoning_model(model):
+		"""Return True if model is a reasoning model (no temperature/top_p support)."""
+		m = (model or "").lower()
+		return m.startswith(("o1", "o3", "o4"))
+
 	def _call_openai_compatible(self, messages, model, max_tokens, temperature, json_mode=False, tools=None):
 		"""Call OpenAI-compatible API (works with OpenAI, Ollama, vLLM, LiteLLM)."""
 		url = f"{self.base_url.rstrip('/')}/chat/completions"
@@ -82,10 +99,18 @@ class LLMProvider:
 		payload = {
 			"model": model,
 			"messages": messages,
-			"max_tokens": max_tokens,
-			"temperature": temperature,
-			"top_p": self.top_p,
 		}
+
+		# Newer models use max_completion_tokens; older use max_tokens
+		if self._needs_new_params(model):
+			payload["max_completion_tokens"] = max_tokens
+		else:
+			payload["max_tokens"] = max_tokens
+
+		# Reasoning models (o-series) don't support temperature/top_p
+		if not self._is_reasoning_model(model):
+			payload["temperature"] = temperature
+			payload["top_p"] = self.top_p
 
 		if json_mode:
 			payload["response_format"] = {"type": "json_object"}
@@ -107,15 +132,53 @@ class LLMProvider:
 				"tool_calls": msg.get("tool_calls"),
 			}
 			return result
-		except requests.exceptions.Timeout:
-			frappe.throw(f"AI request timed out after {self.timeout}s. Try again or increase timeout.")
 		except requests.exceptions.HTTPError as e:
 			error_detail = ""
 			try:
 				error_detail = e.response.json().get("error", {}).get("message", str(e))
 			except Exception:
 				error_detail = str(e)
+
+			# Auto-retry: if temperature/top_p/max_tokens not supported, retry without them
+			detail_lower = error_detail.lower()
+			if "unsupported" in detail_lower and ("temperature" in detail_lower or "top_p" in detail_lower):
+				payload.pop("temperature", None)
+				payload.pop("top_p", None)
+				try:
+					response2 = requests.post(url, headers=headers, json=payload, timeout=self.timeout)
+					response2.raise_for_status()
+					data2 = response2.json()
+					msg2 = data2["choices"][0]["message"]
+					return {
+						"content": msg2.get("content"),
+						"tokens_input": data2.get("usage", {}).get("prompt_tokens", 0),
+						"tokens_output": data2.get("usage", {}).get("completion_tokens", 0),
+						"tool_calls": msg2.get("tool_calls"),
+					}
+				except Exception:
+					pass  # Fall through to original error
+			if "unsupported" in detail_lower and "max_tokens" in detail_lower:
+				# Switch from max_tokens to max_completion_tokens
+				val = payload.pop("max_tokens", None)
+				if val:
+					payload["max_completion_tokens"] = val
+					try:
+						response2 = requests.post(url, headers=headers, json=payload, timeout=self.timeout)
+						response2.raise_for_status()
+						data2 = response2.json()
+						msg2 = data2["choices"][0]["message"]
+						return {
+							"content": msg2.get("content"),
+							"tokens_input": data2.get("usage", {}).get("prompt_tokens", 0),
+							"tokens_output": data2.get("usage", {}).get("completion_tokens", 0),
+							"tool_calls": msg2.get("tool_calls"),
+						}
+					except Exception:
+						pass
+
 			frappe.throw(f"AI API error: {error_detail}")
+		except requests.exceptions.Timeout:
+			frappe.throw(f"AI request timed out after {self.timeout}s. Try again or increase timeout.")
 		except Exception as e:
 			frappe.throw(f"AI request failed: {str(e)}")
 
@@ -204,12 +267,20 @@ class LLMProvider:
 		payload = {
 			"model": model,
 			"messages": messages,
-			"max_tokens": max_tokens,
-			"temperature": temperature,
-			"top_p": self.top_p,
 			"stream": True,
 			"stream_options": {"include_usage": True},
 		}
+
+		# Newer models use max_completion_tokens; older use max_tokens
+		if self._needs_new_params(model):
+			payload["max_completion_tokens"] = max_tokens
+		else:
+			payload["max_tokens"] = max_tokens
+
+		# Reasoning models (o-series) don't support temperature/top_p
+		if not self._is_reasoning_model(model):
+			payload["temperature"] = temperature
+			payload["top_p"] = self.top_p
 
 		if tools:
 			payload["tools"] = tools
@@ -221,7 +292,47 @@ class LLMProvider:
 				timeout=self.timeout, stream=True,
 			)
 			response.raise_for_status()
+		except requests.exceptions.HTTPError as e:
+			error_detail = ""
+			try:
+				error_detail = e.response.json().get("error", {}).get("message", str(e))
+			except Exception:
+				error_detail = str(e)
 
+			# Auto-retry without temperature/top_p if unsupported
+			detail_lower = error_detail.lower()
+			retried = False
+			if "unsupported" in detail_lower and ("temperature" in detail_lower or "top_p" in detail_lower):
+				payload.pop("temperature", None)
+				payload.pop("top_p", None)
+				try:
+					response = requests.post(
+						url, headers=headers, json=payload,
+						timeout=self.timeout, stream=True,
+					)
+					response.raise_for_status()
+					retried = True
+				except Exception:
+					pass
+			if "unsupported" in detail_lower and "max_tokens" in detail_lower:
+				val = payload.pop("max_tokens", None)
+				if val:
+					payload["max_completion_tokens"] = val
+					try:
+						response = requests.post(
+							url, headers=headers, json=payload,
+							timeout=self.timeout, stream=True,
+						)
+						response.raise_for_status()
+						retried = True
+					except Exception:
+						pass
+			if not retried:
+				raise Exception(f"AI API error: {error_detail}")
+		except requests.exceptions.Timeout:
+			raise Exception(f"AI request timed out after {self.timeout}s")
+
+		try:
 			for line in response.iter_lines():
 				if not line:
 					continue

@@ -705,6 +705,9 @@ def get_model_catalog():
 		import re as _re
 		if _re.search(r'\d{4}[-_]\d{2}[-_]\d{2}', mid):
 			return False
+		# Exclude *-pro models from GPT-5 family (v1/responses only, not chat)
+		if mid.startswith("gpt-5") and "-pro" in mid:
+			return False
 		return any(mid.startswith(p) for p in [
 			"gpt", "o1", "o3", "o4", "claude", "gemini", "deepseek", "grok", "llama", "mistral", "qwen"
 		])
