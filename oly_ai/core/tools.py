@@ -192,6 +192,140 @@ TOOL_DEFINITIONS = [
 			},
 		},
 	},
+	{
+		"type": "function",
+		"function": {
+			"name": "submit_document",
+			"description": "Submit a document (changes docstatus to 1). Use for submitting Sales Orders, Purchase Orders, Journal Entries, Leave Applications, etc. IMPORTANT: This creates an action request that must be approved first.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"doctype": {
+						"type": "string",
+						"description": "The DocType to submit, e.g. 'Sales Order', 'Leave Application'",
+					},
+					"name": {
+						"type": "string",
+						"description": "The document name/ID to submit",
+					},
+				},
+				"required": ["doctype", "name"],
+			},
+		},
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "cancel_document",
+			"description": "Cancel a submitted document (changes docstatus to 2). WARNING: This may be irreversible. IMPORTANT: This creates an action request that must be approved first.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"doctype": {
+						"type": "string",
+						"description": "The DocType to cancel",
+					},
+					"name": {
+						"type": "string",
+						"description": "The document name to cancel",
+					},
+				},
+				"required": ["doctype", "name"],
+			},
+		},
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "delete_document",
+			"description": "Permanently delete a document. WARNING: This is irreversible. IMPORTANT: This creates an action request that must be approved first.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"doctype": {
+						"type": "string",
+						"description": "The DocType to delete from",
+					},
+					"name": {
+						"type": "string",
+						"description": "The document name to delete",
+					},
+				},
+				"required": ["doctype", "name"],
+			},
+		},
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "send_communication",
+			"description": "Send a reply or new message on behalf of the user — creates a Communication record and optionally sends email. Use this to reply to customer inquiries, supplier messages, internal discussions, or any document-linked communication. IMPORTANT: This creates an action request that must be approved first.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"doctype": {
+						"type": "string",
+						"description": "The reference DocType this communication is about, e.g. 'Lead', 'Issue', 'Sales Order'",
+					},
+					"name": {
+						"type": "string",
+						"description": "The reference document name",
+					},
+					"subject": {
+						"type": "string",
+						"description": "Email/message subject line",
+					},
+					"content": {
+						"type": "string",
+						"description": "The message body (HTML or plain text)",
+					},
+					"recipients": {
+						"type": "string",
+						"description": "Comma-separated recipient email addresses",
+					},
+					"cc": {
+						"type": "string",
+						"description": "Comma-separated CC email addresses (optional)",
+					},
+					"send_email": {
+						"type": "boolean",
+						"description": "Whether to actually send the email (true) or just record the communication (false). Default: true",
+					},
+					"communication_type": {
+						"type": "string",
+						"description": "Type of communication: 'Communication' (email), 'Comment', 'Chat'. Default: 'Communication'",
+						"enum": ["Communication", "Comment", "Chat"],
+					},
+				},
+				"required": ["doctype", "name", "content"],
+			},
+		},
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "add_comment",
+			"description": "Add a comment to any document. Use this for internal notes, status updates, or annotations on any DocType record.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"doctype": {
+						"type": "string",
+						"description": "The DocType to comment on",
+					},
+					"name": {
+						"type": "string",
+						"description": "The document name to comment on",
+					},
+					"comment": {
+						"type": "string",
+						"description": "The comment text",
+					},
+				},
+				"required": ["doctype", "name", "comment"],
+			},
+		},
+	},
 ]
 
 
@@ -218,6 +352,11 @@ def execute_tool(tool_name, arguments, user=None):
 		"get_list_summary": _tool_get_list_summary,
 		"create_document": _tool_create_document,
 		"update_document": _tool_update_document,
+		"submit_document": _tool_submit_document,
+		"cancel_document": _tool_cancel_document,
+		"delete_document": _tool_delete_document,
+		"send_communication": _tool_send_communication,
+		"add_comment": _tool_add_comment,
 	}
 
 	handler = tool_map.get(tool_name)
@@ -473,6 +612,249 @@ def _tool_update_document(args, user):
 	}
 
 
+def _tool_submit_document(args, user):
+	"""Create an action request for document submission (requires approval)."""
+	doctype = args["doctype"]
+	name = args["name"]
+
+	settings = frappe.get_cached_doc("AI Settings")
+
+	if not settings.enable_execute_mode:
+		return {"error": "Execute mode is not enabled. Ask your admin to enable it in AI Settings."}
+
+	if not frappe.has_permission(doctype, "submit", name, user=user):
+		return {"error": f"You don't have permission to submit {doctype} {name}"}
+
+	# Verify document exists and is in draft state
+	try:
+		doc = frappe.get_doc(doctype, name)
+		if doc.docstatus != 0:
+			return {"error": f"{doctype} {name} is not in Draft state (docstatus={doc.docstatus}). Only draft documents can be submitted."}
+	except frappe.DoesNotExistError:
+		return {"error": f"{doctype} {name} does not exist"}
+
+	action = frappe.new_doc("AI Action Request")
+	action.status = "Pending"
+	action.action_type = "Submit Document"
+	action.target_doctype = doctype
+	action.target_name = name
+	action.requested_by = user
+	action.action_summary = f"Submit {doctype}: {name}"
+	action.action_data = json.dumps({"action": "submit"})
+	action.flags.ignore_permissions = True
+	action.insert()
+	frappe.db.commit()
+
+	return {
+		"status": "pending_approval",
+		"action_id": action.name,
+		"message": f"Action request created. Waiting for your approval to submit {doctype} {name}.",
+		"summary": action.action_summary,
+		"action_type": "Submit Document",
+		"target_doctype": doctype,
+		"target_name": name,
+	}
+
+
+def _tool_cancel_document(args, user):
+	"""Create an action request for document cancellation (requires approval)."""
+	doctype = args["doctype"]
+	name = args["name"]
+
+	settings = frappe.get_cached_doc("AI Settings")
+
+	if not settings.enable_execute_mode:
+		return {"error": "Execute mode is not enabled. Ask your admin to enable it in AI Settings."}
+
+	if not frappe.has_permission(doctype, "cancel", name, user=user):
+		return {"error": f"You don't have permission to cancel {doctype} {name}"}
+
+	# Verify document is submitted
+	try:
+		doc = frappe.get_doc(doctype, name)
+		if doc.docstatus != 1:
+			return {"error": f"{doctype} {name} is not submitted (docstatus={doc.docstatus}). Only submitted documents can be cancelled."}
+	except frappe.DoesNotExistError:
+		return {"error": f"{doctype} {name} does not exist"}
+
+	action = frappe.new_doc("AI Action Request")
+	action.status = "Pending"
+	action.action_type = "Cancel Document"
+	action.target_doctype = doctype
+	action.target_name = name
+	action.requested_by = user
+	action.action_summary = f"Cancel {doctype}: {name} (WARNING: This may be irreversible)"
+	action.action_data = json.dumps({"action": "cancel"})
+	action.flags.ignore_permissions = True
+	action.insert()
+	frappe.db.commit()
+
+	return {
+		"status": "pending_approval",
+		"action_id": action.name,
+		"message": f"⚠️ Action request created. This will CANCEL {doctype} {name}. Please review carefully before approving.",
+		"summary": action.action_summary,
+		"action_type": "Cancel Document",
+		"target_doctype": doctype,
+		"target_name": name,
+	}
+
+
+def _tool_delete_document(args, user):
+	"""Create an action request for document deletion (requires approval)."""
+	doctype = args["doctype"]
+	name = args["name"]
+
+	settings = frappe.get_cached_doc("AI Settings")
+
+	if not settings.enable_execute_mode:
+		return {"error": "Execute mode is not enabled. Ask your admin to enable it in AI Settings."}
+
+	if not frappe.has_permission(doctype, "delete", name, user=user):
+		return {"error": f"You don't have permission to delete {doctype} {name}"}
+
+	# Verify document exists
+	if not frappe.db.exists(doctype, name):
+		return {"error": f"{doctype} {name} does not exist"}
+
+	action = frappe.new_doc("AI Action Request")
+	action.status = "Pending"
+	action.action_type = "Delete Document"
+	action.target_doctype = doctype
+	action.target_name = name
+	action.requested_by = user
+	action.action_summary = f"DELETE {doctype}: {name} (WARNING: This is PERMANENT and irreversible)"
+	action.action_data = json.dumps({"action": "delete"})
+	action.flags.ignore_permissions = True
+	action.insert()
+	frappe.db.commit()
+
+	return {
+		"status": "pending_approval",
+		"action_id": action.name,
+		"message": f"🚨 Action request created. This will PERMANENTLY DELETE {doctype} {name}. This cannot be undone!",
+		"summary": action.action_summary,
+		"action_type": "Delete Document",
+		"target_doctype": doctype,
+		"target_name": name,
+	}
+
+
+def _tool_send_communication(args, user):
+	"""Create an action request for sending a communication/reply (requires approval)."""
+	doctype = args["doctype"]
+	name = args["name"]
+	content = args["content"]
+	subject = args.get("subject", "")
+	recipients = args.get("recipients", "")
+	cc = args.get("cc", "")
+	send_email = args.get("send_email", True)
+	comm_type = args.get("communication_type", "Communication")
+
+	settings = frappe.get_cached_doc("AI Settings")
+
+	if not settings.enable_execute_mode:
+		return {"error": "Execute mode is not enabled. Ask your admin to enable it in AI Settings."}
+
+	if not frappe.has_permission(doctype, "read", name, user=user):
+		return {"error": f"You don't have access to {doctype} {name}"}
+
+	# Auto-detect recipients from the document if not provided
+	if not recipients:
+		try:
+			doc = frappe.get_doc(doctype, name)
+			# Try common email fields
+			for field in ["email_id", "email", "contact_email", "customer_primary_contact"]:
+				if hasattr(doc, field) and doc.get(field):
+					recipients = doc.get(field)
+					break
+			# Fall back to last incoming communication sender
+			if not recipients:
+				last_comm = frappe.db.sql(
+					"""SELECT sender FROM tabCommunication
+					WHERE reference_doctype=%s AND reference_name=%s
+					AND communication_type='Communication' AND sent_or_received='Received'
+					ORDER BY creation DESC LIMIT 1""",
+					(doctype, name), as_dict=True
+				)
+				if last_comm:
+					recipients = last_comm[0].sender
+		except Exception:
+			pass
+
+	if not subject:
+		subject = f"Re: {doctype} {name}"
+
+	action = frappe.new_doc("AI Action Request")
+	action.status = "Pending"
+	action.action_type = "Send Communication"
+	action.target_doctype = doctype
+	action.target_name = name
+	action.requested_by = user
+	recipient_preview = recipients[:50] if recipients else "auto-detect"
+	action.action_summary = f"Send {'email' if send_email else 'message'} for {doctype} {name} to {recipient_preview}: {content[:100]}..."
+	action.action_data = json.dumps({
+		"subject": subject,
+		"content": content,
+		"recipients": recipients,
+		"cc": cc,
+		"send_email": send_email,
+		"communication_type": comm_type,
+	})
+	action.flags.ignore_permissions = True
+	action.insert()
+	frappe.db.commit()
+
+	return {
+		"status": "pending_approval",
+		"action_id": action.name,
+		"message": f"Action request created. Waiting for your approval to send {'email' if send_email else 'communication'} for {doctype} {name}.",
+		"summary": action.action_summary,
+		"action_type": "Send Communication",
+		"target_doctype": doctype,
+		"target_name": name,
+		"recipients": recipients,
+		"content_preview": content[:200],
+	}
+
+
+def _tool_add_comment(args, user):
+	"""Create an action request for adding a comment to a document (requires approval)."""
+	doctype = args["doctype"]
+	name = args["name"]
+	comment = args["comment"]
+
+	settings = frappe.get_cached_doc("AI Settings")
+
+	if not settings.enable_execute_mode:
+		return {"error": "Execute mode is not enabled. Ask your admin to enable it in AI Settings."}
+
+	if not frappe.has_permission(doctype, "read", name, user=user):
+		return {"error": f"You don't have access to {doctype} {name}"}
+
+	action = frappe.new_doc("AI Action Request")
+	action.status = "Pending"
+	action.action_type = "Add Comment"
+	action.target_doctype = doctype
+	action.target_name = name
+	action.requested_by = user
+	action.action_summary = f"Add comment on {doctype} {name}: {comment[:100]}..."
+	action.action_data = json.dumps({"comment": comment})
+	action.flags.ignore_permissions = True
+	action.insert()
+	frappe.db.commit()
+
+	return {
+		"status": "pending_approval",
+		"action_id": action.name,
+		"message": f"Action request created. Waiting for your approval to add a comment on {doctype} {name}.",
+		"summary": action.action_summary,
+		"action_type": "Add Comment",
+		"target_doctype": doctype,
+		"target_name": name,
+	}
+
+
 def _get_max_records():
 	"""Get max records per query from settings."""
 	try:
@@ -496,7 +878,8 @@ def get_available_tools(user=None, mode="ask"):
 
 	# Read-only tools (always available in agent/execute modes if data queries enabled)
 	read_tools = ["search_documents", "get_document", "count_documents", "get_report", "get_list_summary"]
-	write_tools = ["create_document", "update_document"]
+	write_tools = ["create_document", "update_document", "submit_document", "cancel_document",
+	               "delete_document", "send_communication", "add_comment"]
 
 	# Only agent and execute modes get tools
 	if mode not in ("agent", "execute"):

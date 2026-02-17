@@ -37,7 +37,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Action Type",
-   "options": "Create Document\nUpdate Document\nSubmit Document\nCancel Document\nDelete Document\nRun Report\nCustom",
+   "options": "Create Document\nUpdate Document\nSubmit Document\nCancel Document\nDelete Document\nSend Communication\nAdd Comment\nRun Report\nCustom",
    "reqd": 1
   },
   {

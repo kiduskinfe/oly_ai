@@ -51,6 +51,10 @@ class AIActionRequest(Document):
 				result = self._execute_cancel()
 			elif self.action_type == "Delete Document":
 				result = self._execute_delete()
+			elif self.action_type == "Send Communication":
+				result = self._execute_send_communication(data)
+			elif self.action_type == "Add Comment":
+				result = self._execute_add_comment(data)
 			else:
 				frappe.throw(_(f"Unsupported action type: {self.action_type}"))
 
@@ -146,3 +150,79 @@ class AIActionRequest(Document):
 
 		frappe.delete_doc(self.target_doctype, self.target_name)
 		return f"Deleted {self.target_doctype}: {self.target_name}"
+
+	def _execute_send_communication(self, data):
+		"""Send a communication (email/message) linked to a document."""
+		if not self.target_doctype or not self.target_name:
+			frappe.throw(_("Target DocType and Name required for Send Communication"))
+
+		if not frappe.has_permission(self.target_doctype, "read", self.target_name):
+			frappe.throw(_("No permission to access {0} {1}").format(
+				self.target_doctype, self.target_name
+			))
+
+		content = data.get("content", "")
+		subject = data.get("subject", f"Re: {self.target_doctype} {self.target_name}")
+		recipients = data.get("recipients", "")
+		cc = data.get("cc", "")
+		send_email = data.get("send_email", True)
+		comm_type = data.get("communication_type", "Communication")
+
+		# Create Communication record
+		comm = frappe.new_doc("Communication")
+		comm.communication_type = comm_type
+		comm.subject = subject
+		comm.content = content
+		comm.reference_doctype = self.target_doctype
+		comm.reference_name = self.target_name
+		comm.sender = frappe.session.user
+		comm.sent_or_received = "Sent"
+		comm.communication_medium = "Email" if send_email else "Other"
+
+		if recipients:
+			comm.recipients = recipients
+
+		if cc:
+			comm.cc = cc
+
+		comm.insert(ignore_permissions=True)
+
+		# Actually send email if requested
+		if send_email and recipients:
+			try:
+				frappe.sendmail(
+					recipients=recipients.split(","),
+					cc=cc.split(",") if cc else None,
+					subject=subject,
+					message=content,
+					reference_doctype=self.target_doctype,
+					reference_name=self.target_name,
+					communication=comm.name,
+				)
+				return f"Email sent to {recipients} for {self.target_doctype} {self.target_name} (Communication: {comm.name})"
+			except Exception as e:
+				return f"Communication created ({comm.name}) but email sending failed: {str(e)}"
+
+		return f"Communication recorded for {self.target_doctype} {self.target_name} (Communication: {comm.name})"
+
+	def _execute_add_comment(self, data):
+		"""Add a comment to a document."""
+		if not self.target_doctype or not self.target_name:
+			frappe.throw(_("Target DocType and Name required for Add Comment"))
+
+		if not frappe.has_permission(self.target_doctype, "read", self.target_name):
+			frappe.throw(_("No permission to access {0} {1}").format(
+				self.target_doctype, self.target_name
+			))
+
+		comment_text = data.get("comment", "")
+		if not comment_text:
+			frappe.throw(_("Comment text is required"))
+
+		# Add comment via Frappe's built-in comment system
+		comment = frappe.get_doc(self.target_doctype, self.target_name).add_comment(
+			"Comment",
+			text=f"[AI Assistant] {comment_text}",
+		)
+
+		return f"Comment added to {self.target_doctype} {self.target_name} (Comment: {comment.name})"
