@@ -181,6 +181,12 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     __("How to submit a timesheet?"),
   ];
 
+  // Image intent detection (match backend logic enough for routing)
+  var IMAGE_REQUEST_RE = /(generate|create|make|draw|design|render).*(image|picture|photo|illustration|artwork|logo|banner|poster|graphic|visual)|\bdall[\s\-]?e\b/i;
+  function is_image_request(text) {
+    return IMAGE_REQUEST_RE.test((text || '').trim());
+  }
+
   // ── Model selector HTML ──
   var model_options = available_models.map(function (m) {
     var sel = m.value === current_model ? ' selected' : '';
@@ -265,6 +271,36 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   var $title = $("#fp-title");
   var $model = $("#fp-model");
   var $attach_preview = $("#fp-attach-preview");
+
+  function render_model_selector_options(models, default_model) {
+    if (!models || !models.length) return;
+    var active = current_model;
+    if (default_model && !models.some(function (m) { return m.value === active; })) {
+      active = default_model;
+      current_model = active;
+    }
+    var opts = models.map(function (m) {
+      var sel = m.value === active ? ' selected' : '';
+      return '<option value="' + m.value + '"' + sel + '>' + (m.label || m.value) + '</option>';
+    }).join('');
+    $model.html(opts).val(active);
+  }
+
+  function load_model_catalog() {
+    frappe.xcall("oly_ai.api.chat.get_model_catalog")
+      .then(function (res) {
+        if (!res || !res.models) return;
+        available_models = res.models;
+        if (res.default_model) current_model = res.default_model;
+        render_model_selector_options(available_models, res.default_model);
+      })
+      .catch(function () {
+        render_model_selector_options(available_models, current_model);
+      });
+  }
+
+  render_model_selector_options(available_models, current_model);
+  load_model_catalog();
 
   // ── Welcome ──
   function show_welcome() {
@@ -644,6 +680,38 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       scroll_bottom();
 
       var file_urls = files_to_send.map(function (f) { return f.file_url; });
+
+      // Image generation uses non-streaming path (backend auto-routes to DALL·E)
+      if (is_image_request(q) && !file_urls.length) {
+        frappe.xcall("oly_ai.api.chat.send_message", {
+          session_name: sid,
+          message: q,
+          model: sel_model,
+          mode: current_mode,
+          file_urls: null,
+        })
+          .then(function (r) {
+            $("#" + lid).closest('div[style*="max-width"]').remove();
+            append_ai_msg(r.content, r);
+            if (r.pending_actions && r.pending_actions.length) {
+              render_action_cards(r.pending_actions);
+            }
+            scroll_bottom();
+            sending = false;
+            $input.focus();
+            load_sessions();
+          })
+          .catch(function (err) {
+            $("#" + lid).closest('div[style*="max-width"]').html(
+              '<div style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start;">' +
+                '<div style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--red-100);color:var(--red-600);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">!</div>' +
+                '<div style="flex:1;color:var(--red-600);font-size:0.9rem;">' + (err.message || __("Image generation failed")) + '</div>' +
+              '</div>'
+            );
+            sending = false;
+          });
+        return;
+      }
 
       // Try streaming first, fall back to sync
       frappe.xcall("oly_ai.api.stream.send_message_stream", {

@@ -654,6 +654,87 @@ def _get_fallback_model(requested_model, settings):
 	return fallback
 
 
+@frappe.whitelist()
+def get_model_catalog():
+	"""Return chat-capable models available for the configured provider/key.
+
+	Used by Ask AI frontend to avoid listing models that won't work.
+	"""
+	settings = frappe.get_cached_doc("AI Settings")
+	provider = settings.provider_type
+	default_model = settings.default_model or "gpt-4o-mini"
+
+	def _label_for_model(model_id):
+		return model_id.replace("-", " ").upper().replace("GPT ", "GPT-")
+
+	def _is_chat_model(model_id):
+		mid = (model_id or "").lower()
+		if any(x in mid for x in ["embedding", "tts", "whisper", "moderation", "image", "dall-e", "audio", "realtime"]):
+			return False
+		return any(mid.startswith(p) for p in [
+			"gpt", "o1", "o3", "o4", "claude", "gemini", "deepseek", "grok", "llama", "mistral", "qwen"
+		])
+
+	try:
+		import requests
+		api_key = settings.get_password("api_key")
+		base_url = settings.get_base_url().rstrip("/")
+
+		if not api_key:
+			raise Exception("API key not configured")
+
+		models = []
+		if provider in ("OpenAI", "Custom (OpenAI Compatible)"):
+			resp = requests.get(
+				f"{base_url}/models",
+				headers={"Authorization": f"Bearer {api_key}"},
+				timeout=20,
+			)
+			resp.raise_for_status()
+			data = resp.json().get("data", [])
+			models = sorted({m.get("id") for m in data if m.get("id") and _is_chat_model(m.get("id"))})
+
+		elif provider == "Anthropic":
+			# Anthropic model listing endpoint
+			resp = requests.get(
+				f"{base_url}/models",
+				headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
+				timeout=20,
+			)
+			resp.raise_for_status()
+			data = resp.json().get("data", [])
+			models = sorted({m.get("id") for m in data if m.get("id") and _is_chat_model(m.get("id"))})
+
+		if default_model not in models:
+			models.insert(0, default_model)
+
+		preferred = [
+			"gpt-4o-mini", "gpt-4o", "gpt-5", "gpt-5-chat-latest", "gpt-5.2", "gpt-5.2-chat-latest",
+			"o4-mini", "o3-mini", "o3", "o1-mini", "o1",
+		]
+
+		def _sort_key(mid):
+			if mid in preferred:
+				return (0, preferred.index(mid))
+			return (1, mid)
+
+		models = sorted(dict.fromkeys(models), key=_sort_key)
+
+		return {
+			"provider_type": provider,
+			"default_model": default_model,
+			"models": [{"value": m, "label": _label_for_model(m)} for m in models],
+		}
+
+	except Exception:
+		# Safe fallback: keep UI functional with default model only
+		return {
+			"provider_type": provider,
+			"default_model": default_model,
+			"models": [{"value": default_model, "label": _label_for_model(default_model)}],
+		}
+
+
 def _is_image_request(message):
 	"""Detect if the user's message is asking to generate an image."""
 	return bool(_IMAGE_GEN_RE.search(message))
