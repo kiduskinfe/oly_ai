@@ -88,10 +88,12 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       '.ai-md pre:hover .ai-code-copy{opacity:1;}',
       '.ai-code-copy:hover{color:var(--primary-color);border-color:var(--primary-color);}',
       '.ai-code-lang{position:absolute;top:6px;left:10px;font-size:0.65rem;color:var(--text-light);text-transform:uppercase;letter-spacing:0.5px;}',
-      /* stop button */
-      '.oly-fp-stop-btn{cursor:pointer;height:32px;width:32px;min-width:32px;border-radius:50%;background:var(--red-500);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;animation:oly-pulse 1.5s ease-in-out infinite;border:none;padding:0;}',
-      '.oly-fp-stop-btn:hover{background:var(--red-600);}',
-      '@keyframes oly-pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.4);}50%{box-shadow:0 0 0 6px rgba(239,68,68,0);}}',
+      /* stop button — same style as send btn */
+      '.oly-fp-stop-btn{cursor:pointer;height:32px;width:32px;min-width:32px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:none;padding:0;animation:oly-pulse 1.5s ease-in-out infinite;}',
+      '.oly-fp-stop-btn:hover{opacity:0.85;}',
+      '@keyframes oly-pulse{0%,100%{box-shadow:0 0 0 0 rgba(var(--primary-color-rgb,59,130,246),0.4);}50%{box-shadow:0 0 0 6px rgba(var(--primary-color-rgb,59,130,246),0);}}',
+      '[data-theme="dark"] .oly-fp .oly-fp-stop-btn{background:white !important;}',
+      '[data-theme="dark"] .oly-fp .oly-fp-stop-btn svg rect{fill:#1a1a1a !important;}',
       /* streaming cursor */
       '.ai-streaming-cursor::after{content:"▊";animation:ai-blink 1s infinite;color:var(--primary-color);}',
       '@keyframes ai-blink{0%,100%{opacity:1;}50%{opacity:0;}}',
@@ -179,11 +181,14 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   var user_access = null; // loaded async — {tier, allowed_modes, can_query_data, can_execute_actions}
   var stream_task_id = null;
   var stream_buffer = {};
+  var stream_poll_timer = null;  // polling fallback timer
+  var stream_poll_session = null; // session being polled
+  var stream_poll_msg_count = 0;  // message count when stream started
 
   var I = oly_ai.ICON;
 
-  // ── Stop icon SVG ──
-  var stop_icon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+  // ── Stop icon SVG (square stop, same color scheme as send) ──
+  var stop_icon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2" fill="white"/></svg>';
 
   // ── Sending state management ──
   function set_sending_state(is_sending) {
@@ -212,6 +217,8 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
 
   function stop_generation() {
     if (!sending) return;
+    // Stop polling fallback
+    _stop_poll();
     // Stop streaming — clear buffer and remove cursor
     if (stream_task_id) {
       var $el = $("#stream-content-" + stream_task_id);
@@ -221,14 +228,106 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         if (partial) {
           $el.html(
             oly_ai.render_markdown(partial) +
-            '<div style="font-size:0.75rem;color:var(--orange-500);margin-top:6px;">⏹ ' + __("Generation stopped") + '</div>'
+            '<div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px;">⏹ ' + __("Generation stopped") + '</div>'
           );
+        } else {
+          // No content received — check DB for response
+          _recover_from_db(stream_task_id);
         }
       }
       delete stream_buffer[stream_task_id];
       stream_task_id = null;
     }
     set_sending_state(false);
+  }
+
+  // ── Polling fallback — if Socket.IO events don't arrive, fetch from DB ──
+  function _start_poll(session_name, task_id, msg_count) {
+    _stop_poll();
+    stream_poll_session = session_name;
+    stream_poll_msg_count = msg_count;
+    var poll_attempts = 0;
+    var max_attempts = 40; // 40 * 3s = 120s max
+    stream_poll_timer = setInterval(function () {
+      poll_attempts++;
+      if (poll_attempts > max_attempts) {
+        _stop_poll();
+        // Timeout — show error
+        var $el = $("#stream-content-" + task_id);
+        if ($el.length && !stream_buffer[task_id]) {
+          $el.removeClass("ai-streaming-cursor").html(
+            '<div style="color:var(--red-600);font-size:0.9rem;">⏱ ' + __("Response timed out. Please try again.") + '</div>'
+          );
+          set_sending_state(false);
+        }
+        return;
+      }
+      // If we already have streamed content, skip polling
+      if (stream_buffer[task_id] && stream_buffer[task_id].length > 0) return;
+      // Poll DB for new assistant message
+      frappe.xcall("oly_ai.api.chat.get_messages", { session_name: session_name })
+        .then(function (msgs) {
+          if (!msgs || msgs.length <= stream_poll_msg_count) return;
+          // Found new message(s) — the worker finished!
+          var last = msgs[msgs.length - 1];
+          if (last.role === "assistant") {
+            _stop_poll();
+            var $el = $("#stream-content-" + task_id);
+            if ($el.length) {
+              $el.removeClass("ai-streaming-cursor");
+              var parts = [r_model(last), r_cost(last)].filter(Boolean).join(" &middot; ");
+              $el.html(
+                oly_ai.render_markdown(last.content || "") +
+                '<div style="display:flex;align-items:center;gap:12px;margin-top:6px;font-size:0.75rem;">' +
+                  '<span class="oly-ai-copy-btn" data-text="' + frappe.utils.escape_html(last.content || "") + '" style="cursor:pointer;color:var(--text-muted);display:flex;align-items:center;gap:4px;transition:color .15s;">' + I.copy + ' Copy</span>' +
+                  (parts ? '<span style="color:var(--text-light);">' + parts + '</span>' : '') +
+                '</div>'
+              );
+              wire_copy();
+              enhance_code_blocks();
+            }
+            delete stream_buffer[task_id];
+            stream_task_id = null;
+            set_sending_state(false);
+            scroll_bottom();
+            load_sessions();
+          }
+        })
+        .catch(function () { /* ignore polling errors */ });
+    }, 3000);
+  }
+
+  function _stop_poll() {
+    if (stream_poll_timer) {
+      clearInterval(stream_poll_timer);
+      stream_poll_timer = null;
+    }
+  }
+
+  function _recover_from_db(task_id) {
+    // One-shot: try to load last message from DB
+    if (!current_session) return;
+    frappe.xcall("oly_ai.api.chat.get_messages", { session_name: current_session })
+      .then(function (msgs) {
+        if (!msgs || !msgs.length) return;
+        var last = msgs[msgs.length - 1];
+        if (last.role === "assistant") {
+          var $el = $("#stream-content-" + task_id);
+          if ($el.length) {
+            var parts = [r_model(last), r_cost(last)].filter(Boolean).join(" &middot; ");
+            $el.html(
+              oly_ai.render_markdown(last.content || "") +
+              '<div style="display:flex;align-items:center;gap:12px;margin-top:6px;font-size:0.75rem;">' +
+                '<span class="oly-ai-copy-btn" data-text="' + frappe.utils.escape_html(last.content || "") + '" style="cursor:pointer;color:var(--text-muted);display:flex;align-items:center;gap:4px;transition:color .15s;">' + I.copy + ' Copy</span>' +
+                (parts ? '<span style="color:var(--text-light);">' + parts + '</span>' : '') +
+              '</div>'
+            );
+            wire_copy();
+            enhance_code_blocks();
+          }
+        }
+      })
+      .catch(function () {});
   }
 
   var suggestions = [
@@ -767,6 +866,9 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         return;
       }
 
+      // Count current messages so poll fallback can detect new ones
+      var pre_send_msg_count = $msgs.find('.oly-fp-user-bubble').length + $msgs.find('.oly-fp-ai-avatar').length;
+
       // Try streaming first, fall back to sync
       frappe.xcall("oly_ai.api.stream.send_message_stream", {
         session_name: sid,
@@ -785,6 +887,15 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
             '</div>'
           );
           scroll_bottom();
+          // Start polling fallback — if realtime events don't arrive, fetch from DB
+          frappe.xcall("oly_ai.api.chat.get_messages", { session_name: sid })
+            .then(function (msgs) {
+              _start_poll(sid, r.task_id, msgs ? msgs.length : 0);
+            })
+            .catch(function () {
+              // Even if count fails, start poll with estimate
+              _start_poll(sid, r.task_id, pre_send_msg_count);
+            });
         })
         .catch(function () {
           // Fallback to non-streaming API
@@ -853,6 +964,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
 
   frappe.realtime.on("ai_done", function (data) {
     if (!data || !data.task_id) return;
+    _stop_poll(); // Realtime worked — stop polling
     var $el = $("#stream-content-" + data.task_id);
     if (!$el.length) return;
     $el.removeClass("ai-streaming-cursor");
@@ -889,6 +1001,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
 
   frappe.realtime.on("ai_error", function (data) {
     if (!data || !data.task_id) return;
+    _stop_poll(); // Realtime worked — stop polling
     var $el = $("#stream-content-" + data.task_id);
     if ($el.length) {
       $el.removeClass("ai-streaming-cursor").html(
