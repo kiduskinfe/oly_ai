@@ -177,8 +177,59 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   var sidebar_open = true;
   var attached_files = []; // [{name, file_url, is_image, preview}]
   var user_access = null; // loaded async — {tier, allowed_modes, can_query_data, can_execute_actions}
+  var stream_task_id = null;
+  var stream_buffer = {};
 
   var I = oly_ai.ICON;
+
+  // ── Stop icon SVG ──
+  var stop_icon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+
+  // ── Sending state management ──
+  function set_sending_state(is_sending) {
+    sending = is_sending;
+    var $btn = $("#fp-send");
+    var $inp = $("#fp-input");
+    if (is_sending) {
+      // Replace send button with stop button
+      $btn.replaceWith(
+        '<span class="oly-fp-stop-btn" id="fp-send" title="' + __("Stop generating") + '">' + stop_icon + '</span>'
+      );
+      $("#fp-send").on("click", stop_generation);
+      $inp.prop("disabled", true).css("opacity", "0.5");
+    } else {
+      // Restore send button
+      var $cur = $("#fp-send");
+      $cur.replaceWith(
+        '<span class="oly-ai-send-btn" id="fp-send" style="cursor:pointer;height:32px;width:32px;min-width:32px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + I.send + '</span>'
+      );
+      $("#fp-send").on("click", send_message);
+      $inp.prop("disabled", false).css("opacity", "1");
+    }
+    // Update cached reference
+    $send = $("#fp-send");
+  }
+
+  function stop_generation() {
+    if (!sending) return;
+    // Stop streaming — clear buffer and remove cursor
+    if (stream_task_id) {
+      var $el = $("#stream-content-" + stream_task_id);
+      if ($el.length) {
+        $el.removeClass("ai-streaming-cursor");
+        var partial = stream_buffer[stream_task_id] || "";
+        if (partial) {
+          $el.html(
+            oly_ai.render_markdown(partial) +
+            '<div style="font-size:0.75rem;color:var(--orange-500);margin-top:6px;">⏹ ' + __("Generation stopped") + '</div>'
+          );
+        }
+      }
+      delete stream_buffer[stream_task_id];
+      stream_task_id = null;
+    }
+    set_sending_state(false);
+  }
 
   var suggestions = [
     __("How do I create a Sales Order?"),
@@ -645,8 +696,6 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   }
 
   // ── Send (with streaming support) ──
-  var stream_task_id = null;
-
   function send_message() {
     var q = $input.val().trim();
     if (!q || sending) return;
@@ -782,7 +831,6 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   }
 
   // ── Realtime event listeners for streaming ──
-  var stream_buffer = {};
 
   frappe.realtime.on("ai_chunk", function (data) {
     if (!data || !data.task_id) return;
