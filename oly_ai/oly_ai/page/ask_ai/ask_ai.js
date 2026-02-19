@@ -1470,7 +1470,13 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     var act = $(this).data("act");
     $more_menu.removeClass("show");
 
-    if (act === "export") {
+    if (act === "share") {
+      if (current_session) {
+        show_share_dialog(current_session);
+      } else {
+        frappe.show_alert({ message: __('Start a chat first'), indicator: 'yellow' });
+      }
+    } else if (act === "export") {
       export_chat();
     } else if (act === "new") {
       new_chat();
