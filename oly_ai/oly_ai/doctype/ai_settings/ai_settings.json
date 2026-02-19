@@ -42,6 +42,9 @@
   "cache_section",
   "enable_caching",
   "cache_ttl_hours",
+  "branding_section",
+  "brand_color_from",
+  "brand_color_to",
   "logging_section",
   "enable_audit_logging",
   "enable_cost_tracking",
@@ -324,6 +327,27 @@
    "description": "Store AI responses in audit log"
   },
   {
+   "fieldname": "branding_section",
+   "fieldtype": "Section Break",
+   "label": "AI Branding",
+   "collapsible": 1,
+   "description": "Customize the AI assistant look and feel"
+  },
+  {
+   "fieldname": "brand_color_from",
+   "fieldtype": "Color",
+   "label": "Brand Gradient Start",
+   "default": "#f97316",
+   "description": "Start color of the AI icon gradient (e.g. #f97316 for orange)"
+  },
+  {
+   "fieldname": "brand_color_to",
+   "fieldtype": "Color",
+   "label": "Brand Gradient End",
+   "default": "#ea580c",
+   "description": "End color of the AI icon gradient (e.g. #ea580c for dark orange)"
+  },
+  {
    "fieldname": "self_hosted_section",
    "fieldtype": "Section Break",
    "label": "Self-Hosted / Future Setup",
@@ -339,7 +363,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-02-17 00:00:00.000000",
+ "modified": "2026-02-18 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Oly AI",
  "name": "AI Settings",

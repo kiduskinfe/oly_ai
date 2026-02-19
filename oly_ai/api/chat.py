@@ -805,6 +805,39 @@ def _save_generated_image(image_url, prompt, user):
 		return image_url
 
 
+def _sanitize_image_prompt(prompt, settings):
+	"""Rewrite the user's image prompt to avoid DALL-E safety filter rejections.
+
+	Runs the prompt through GPT to strip brand names, trademarked terms,
+	and anything that might trigger OpenAI's content filter, while preserving
+	the artistic intent.
+	"""
+	try:
+		provider = LLMProvider(settings)
+		result = provider.chat(
+			messages=[
+				{"role": "system", "content": (
+					"You are an image prompt rewriter. Given a user's image generation prompt, "
+					"rewrite it to be safe for DALL-E 3. Rules:\n"
+					"1. Remove ALL brand names, company names, software names (ERPNext, SAP, Salesforce, etc.)\n"
+					"2. Replace them with generic descriptions (e.g. 'ERPNext modules' → 'business software modules')\n"
+					"3. Remove any names of real people or organizations\n"
+					"4. Keep the artistic style, colors, composition, and mood intact\n"
+					"5. Return ONLY the rewritten prompt, nothing else — no quotes, no explanation"
+				)},
+				{"role": "user", "content": prompt},
+			],
+			model="gpt-4o-mini",
+			max_tokens=300,
+			temperature=0.3,
+		)
+		sanitized = (result.get("content") or "").strip()
+		return sanitized if sanitized else prompt
+	except Exception:
+		# If sanitization fails, use original prompt
+		return prompt
+
+
 def _generate_image_internal(session, prompt, user, settings, size="1024x1024", quality="standard"):
 	"""Internal image generation — called from send_message auto-detect.
 
@@ -817,8 +850,12 @@ def _generate_image_internal(session, prompt, user, settings, size="1024x1024", 
 	start_time = time.time()
 
 	provider = LLMProvider(settings)
+
+	# Sanitize prompt to avoid DALL-E safety filter rejections
+	safe_prompt = _sanitize_image_prompt(prompt, settings)
+
 	result = provider.generate_image(
-		prompt=prompt,
+		prompt=safe_prompt,
 		model="dall-e-3",
 		size=size,
 		quality=quality,
@@ -908,8 +945,12 @@ def generate_image(session_name, prompt, size="1024x1024", quality="standard"):
 
 	try:
 		provider = LLMProvider(settings)
+
+		# Sanitize prompt to avoid DALL-E safety filter rejections
+		safe_prompt = _sanitize_image_prompt(prompt, settings)
+
 		result = provider.generate_image(
-			prompt=prompt,
+			prompt=safe_prompt,
 			model="dall-e-3",
 			size=size,
 			quality=quality,

@@ -10,3 +10,4 @@ build/
 *~
 node_modules/
 .env
+oly_ai/public/js/oly_ai.bundle.js.bak

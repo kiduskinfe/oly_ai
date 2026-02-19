@@ -97,9 +97,18 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       /* streaming cursor */
       '.ai-streaming-cursor::after{content:"▊";animation:ai-blink 1s infinite;color:var(--primary-color);}',
       '@keyframes ai-blink{0%,100%{opacity:1;}50%{opacity:0;}}',
-      /* export button */
-      '.oly-fp-export{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px 8px;border-radius:6px;font-size:0.75rem;display:flex;align-items:center;gap:4px;transition:all .15s;}',
-      '.oly-fp-export:hover{color:var(--primary-color);background:var(--control-bg);}',
+      /* header overflow menu (3-dots) */
+      '.oly-fp-more-wrap{position:relative;display:flex;align-items:center;}',
+      '.oly-fp-more-btn{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:6px;border-radius:8px;display:flex;align-items:center;justify-content:center;transition:all .15s;}',
+      '.oly-fp-more-btn:hover{color:var(--text-color);background:var(--control-bg);}',
+      '.oly-fp-more-menu{position:absolute;top:100%;right:0;margin-top:6px;min-width:170px;background:var(--card-bg);border:1px solid var(--dark-border-color);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.14);padding:6px;display:none;z-index:120;}',
+      '.oly-fp-more-menu.show{display:block;}',
+      '.oly-fp-more-item{display:flex;align-items:center;gap:8px;width:100%;background:none;border:none;text-align:left;color:var(--text-color);padding:8px 10px;border-radius:8px;cursor:pointer;font-size:0.8125rem;transition:all .12s;}',
+      '.oly-fp-more-item:hover{background:var(--control-bg);}',
+      '.oly-fp-more-item svg{width:14px;height:14px;color:var(--text-muted);}',
+      /* modern session list icon chip */
+      '.oly-fp-sb-item-icon{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:22px;height:22px;border-radius:8px;background:var(--control-bg);color:var(--text-muted);}',
+      '.oly-fp-sb-item-icon svg{width:13px;height:13px;stroke:currentColor;}',
       /* tool call indicator */
       '.ai-tool-indicator{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--control-bg);border:1px solid var(--dark-border-color);border-radius:8px;font-size:0.8rem;color:var(--text-muted);margin:4px 0;animation:oly-msg-in 0.2s ease;}',
       '.ai-tool-indicator svg{animation:ai-spin 1s linear infinite;width:14px;height:14px;}',
@@ -385,7 +394,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     /* Sidebar */
     '<div class="oly-fp-sidebar" id="oly-fp-sidebar" style="width:260px;min-width:260px;background:var(--card-bg);border-right:1px solid var(--dark-border-color);display:flex;flex-direction:column;overflow:hidden;">' +
       '<div style="padding:14px 12px 8px;">' +
-        '<button class="oly-fp-sb-new" id="fp-new" style="width:100%;display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--dark-border-color);border-radius:8px;background:transparent;color:var(--text-color);cursor:pointer;font-size:0.875rem;font-weight:500;">' +
+        '<button class="oly-fp-sb-new" id="fp-new" style="width:100%;display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--dark-border-color);border-radius:10px;background:transparent;color:var(--text-color);cursor:pointer;font-size:0.875rem;font-weight:500;">' +
           I.plus + '<span>' + __("New chat") + '</span>' +
         '</button>' +
       '</div>' +
@@ -415,7 +424,16 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
           '<button class="oly-fp-mode" data-mode="execute">' + __("Execute") + '</button>' +
         '</div>' +
         '<select class="oly-fp-model-sel" id="fp-model">' + model_options + '</select>' +
-        '<button class="oly-fp-export" id="fp-export" title="' + __("Export chat") + '"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' + __("Export") + '</button>' +
+        '<div class="oly-fp-more-wrap" style="margin-left:auto;">' +
+          '<button class="oly-fp-more-btn" id="fp-more-btn" title="' + __("More options") + '">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>' +
+          '</button>' +
+          '<div class="oly-fp-more-menu" id="fp-more-menu">' +
+            '<button class="oly-fp-more-item" data-act="export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' + __("Export chat") + '</button>' +
+            '<button class="oly-fp-more-item" data-act="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' + __("New chat") + '</button>' +
+            '<button class="oly-fp-more-item" data-act="toggle-sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>' + __("Toggle sidebar") + '</button>' +
+          '</div>' +
+        '</div>' +
       '</div>' +
       /* Messages */
       '<div id="fp-msgs" style="flex:1;overflow-y:auto;padding:24px 16px;"></div>' +
@@ -442,6 +460,8 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   var $title = $("#fp-title");
   var $model = $("#fp-model");
   var $attach_preview = $("#fp-attach-preview");
+  var $more_btn = $("#fp-more-btn");
+  var $more_menu = $("#fp-more-menu");
 
   function render_model_selector_options(models, default_model) {
     if (!models || !models.length) return;
@@ -480,7 +500,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   function show_welcome() {
     $msgs.html(
       '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:20px;">' +
-        '<div style="color:var(--primary-color);margin-bottom:12px;">' + I.sparkles_lg + '</div>' +
+        '<div style="width:64px;height:64px;border-radius:50%;background:' + oly_ai.brand_gradient() + ';display:flex;align-items:center;justify-content:center;margin-bottom:16px;color:white;">' + I.sparkles_lg + '</div>' +
         '<h3 style="font-size:1.5rem;font-weight:600;color:var(--heading-color);margin-bottom:20px;">' + __("How can I help you today?") + '</h3>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:520px;width:100%;">' +
           suggestions.map(function (s) {
@@ -522,7 +542,6 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       g.items.forEach(function (s) {
         var active = current_session === s.name ? " active" : "";
         html += '<div class="oly-fp-sb-item' + active + '" data-name="' + s.name + '" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:0.8125rem;color:var(--text-color);position:relative;transition:background .12s;">';
-        html += '<span style="display:flex;flex-shrink:0;color:var(--text-muted);">' + I.chat + '</span>';
         html += '<span class="oly-fp-sb-item-title" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + frappe.utils.escape_html(s.title || __("Untitled")) + '</span>';
         html += '<span class="oly-fp-sb-item-acts" style="display:flex;gap:2px;flex-shrink:0;">';
         html += '<button class="oly-fp-sb-act" data-act="edit" data-name="' + s.name + '" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;display:flex;">' + I.edit + '</button>';
@@ -712,17 +731,30 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   function w(max) { return '<div style="max-width:' + (max || 850) + 'px;margin:0 auto;width:100%;">'; }
 
   function append_user_msg(text) {
+    var escaped = frappe.utils.escape_html(text);
     $msgs.append(
       w() +
-      '<div style="display:flex;gap:12px;margin-bottom:20px;justify-content:flex-end;">' +
-        '<div style="max-width:75%;">' +
+      '<div class="oly-fp-user-row" style="display:flex;gap:12px;margin-bottom:20px;justify-content:flex-end;">' +
+        '<div style="max-width:75%;display:flex;flex-direction:column;align-items:flex-end;">' +
           '<div class="oly-fp-user-bubble" style="background:var(--primary-color);color:white;border-radius:18px 18px 4px 18px;padding:10px 16px;font-size:0.9rem;line-height:1.5;word-break:break-word;">' +
-            frappe.utils.escape_html(text) +
+            escaped +
           '</div>' +
+          '<span class="oly-fp-user-copy" data-text="' + escaped + '" style="display:flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-muted);font-size:0.6875rem;padding:3px 4px;margin-top:2px;opacity:0;transition:opacity 0.15s;">' + I.copy + '</span>' +
         '</div>' +
         user_avatar_sm +
       '</div></div>'
     );
+    $msgs.find('.oly-fp-user-row:last').on('mouseenter', function () {
+      $(this).find('.oly-fp-user-copy').css('opacity', '1');
+    }).on('mouseleave', function () {
+      $(this).find('.oly-fp-user-copy').css('opacity', '0');
+    });
+    $msgs.find('.oly-fp-user-copy:last').on('click', function () {
+      frappe.utils.copy_to_clipboard($(this).data('text'));
+      var $b = $(this);
+      $b.html(I.check);
+      setTimeout(function () { $b.html(I.copy); }, 1500);
+    });
   }
 
   function append_ai_msg(content, meta) {
@@ -1302,8 +1334,33 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       $model.val(rec).trigger('change');
     }
   });
-  // Export button
-  $("#fp-export").on("click", export_chat);
+  // 3-dots overflow actions
+  $more_btn.on("click", function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    $more_menu.toggleClass("show");
+  });
+
+  $more_menu.on("click", "[data-act]", function (e) {
+    e.preventDefault();
+    var act = $(this).data("act");
+    $more_menu.removeClass("show");
+
+    if (act === "export") {
+      export_chat();
+    } else if (act === "new") {
+      new_chat();
+    } else if (act === "toggle-sidebar") {
+      sidebar_open = !sidebar_open;
+      $fp.toggleClass("fp-sidebar-closed", !sidebar_open);
+    }
+  });
+
+  $(document).on("click", function (e) {
+    if (!$(e.target).closest(".oly-fp-more-wrap").length) {
+      $more_menu.removeClass("show");
+    }
+  });
 
   // ── Keyboard shortcuts ──
   $(document).on("keydown.oly_ai_page", function (e) {

@@ -9,12 +9,21 @@
    ═══════════════════════════════════════════════════════════════ */
 
 /* ────────────────────────────────────────────
-   1. WRAPPER — position:fixed set via inline JS
-      CSS here only for scrollbar + child layout
+   1. WRAPPER — fixed position overlay at bottom-right
+      Mirrors .chat-app positioning exactly
    ──────────────────────────────────────────── */
 .oly-ai-app {
-  /* position:fixed is set inline in JS for safety */
-  /* These are supplementary styles */
+  position: fixed;
+  bottom: 24px;
+  right: 0px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  width: 100%;
+  max-width: 385px;
+  z-index: 1030;
+  padding: 0 1rem;
 }
 .oly-ai-app ::-webkit-scrollbar { width: 3px; }
 .oly-ai-app ::-webkit-scrollbar-track { background: var(--card-bg); }
@@ -40,6 +49,20 @@
      which would break flex. Container handles flex layout instead. */
 }
 
+/* ── Close button ── */
+.oly-ai-cross {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  cursor: pointer;
+  color: var(--text-muted);
+  z-index: 5;
+  display: none; /* shown via mobile media query or can be kept hidden for desktop */
+}
+.oly-ai-cross:hover {
+  color: var(--heading-color);
+}
+
 .oly-ai-container {
   display: flex;
   flex-direction: column;
@@ -57,6 +80,26 @@
   padding: 12px 12px 12px 12px;
   border-bottom: 1px solid var(--dark-border-color);
   box-shadow: 0px 1px 4px rgba(0, 0, 0, 0.06);
+}
+.oly-ai-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.oly-ai-header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.oly-ai-header-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--heading-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .oly-ai-header-brand {
   display: flex;
@@ -107,8 +150,8 @@
 }
 .oly-ai-input {
   flex: 1;
-  margin: 0 10px 0 0;
-  border-radius: 100px;
+  margin: 0;
+  border-radius: 18px;
   font-size: 0.875rem;
   border: 1px solid var(--dark-border-color);
   background: var(--control-bg);
@@ -155,6 +198,256 @@
 .oly-ai-expand-link:hover {
   color: var(--primary-color);
   text-decoration: underline;
+}
+
+/* ── Mode Tabs ── */
+.oly-ai-modes {
+  display: flex;
+  gap: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--dark-border-color);
+}
+.oly-ai-mode-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 6px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  text-align: center;
+}
+.oly-ai-mode-btn:hover {
+  color: var(--text-color);
+}
+.oly-ai-mode-btn.active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+  font-weight: 600;
+}
+
+/* ── Input Area (new structure) ── */
+.oly-ai-input-area {
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--dark-border-color);
+}
+.oly-ai-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.oly-ai-input-footer {
+  display: flex;
+  align-items: center;
+  padding-top: 6px;
+}
+
+/* ── Model Selector ── */
+.oly-ai-model-sel {
+  background: var(--control-bg);
+  border: 1px solid var(--dark-border-color);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  padding: 3px 8px;
+  outline: none;
+  cursor: pointer;
+  max-width: 160px;
+}
+.oly-ai-model-sel:focus {
+  border-color: var(--primary-color);
+}
+
+/* ── Stop Button ── */
+.oly-ai-stop-btn {
+  cursor: pointer;
+  height: 2rem;
+  width: 2rem;
+  min-width: 2rem;
+  border-radius: 50%;
+  background: var(--red);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.oly-ai-stop-btn svg {
+  fill: white;
+}
+
+/* ── Streaming Cursor ── */
+.ai-streaming-cursor::after {
+  content: "▊";
+  animation: oly-blink 1s step-end infinite;
+  color: var(--primary-color);
+  font-size: 0.875rem;
+  margin-left: 2px;
+}
+@keyframes oly-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ── History View ── */
+.oly-ai-history-view {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+.oly-ai-hist-header {
+  padding: 10px 12px;
+}
+.oly-ai-hist-search {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--control-bg);
+  border: 1px solid var(--dark-border-color);
+  border-radius: 8px;
+  color: var(--text-color);
+  font-size: 0.8125rem;
+  outline: none;
+}
+.oly-ai-hist-search::placeholder {
+  color: var(--text-light);
+}
+.oly-ai-hist-search:focus {
+  border-color: var(--primary-color);
+}
+.oly-ai-hist-empty {
+  padding: 30px 20px;
+  text-align: center;
+  color: var(--text-light);
+  font-size: 0.8125rem;
+}
+.oly-ai-hist-list {
+  padding: 0 8px;
+}
+.oly-ai-hist-group-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-light);
+  padding: 10px 8px 4px;
+}
+.oly-ai-hist-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-color);
+  font-size: 0.8125rem;
+  transition: background 0.12s;
+}
+.oly-ai-hist-item:hover {
+  background: var(--bg-light-gray);
+}
+.oly-ai-hist-item.active {
+  background: rgba(36, 144, 239, 0.08);
+  color: var(--primary-color);
+}
+.oly-ai-hist-item-icon {
+  flex-shrink: 0;
+  opacity: 0.5;
+  display: flex;
+}
+.oly-ai-hist-item-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oly-ai-hist-item-acts {
+  display: none;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.oly-ai-hist-item:hover .oly-ai-hist-item-acts {
+  display: flex;
+}
+.oly-ai-hist-act {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+.oly-ai-hist-act:hover {
+  color: var(--red);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* ── Action Cards ── */
+.oly-ai-action-card {
+  margin: 8px 12px;
+  padding: 12px;
+  background: var(--control-bg);
+  border: 1px solid var(--dark-border-color);
+  border-radius: 10px;
+}
+.oly-ai-action-badge {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.oly-ai-action-badge.pending {
+  background: rgba(234, 179, 8, 0.12);
+  color: #eab308;
+}
+.oly-ai-action-badge.executed {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+}
+.oly-ai-action-badge.failed {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+.oly-ai-action-badge.rejected {
+  background: rgba(156, 163, 175, 0.12);
+  color: #9ca3af;
+}
+.oly-ai-action-fields {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 4px 0;
+}
+.oly-ai-btn-approve {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.oly-ai-btn-approve:hover {
+  background: rgba(34, 197, 94, 0.2);
+}
+.oly-ai-btn-reject {
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.oly-ai-btn-reject:hover {
+  background: rgba(239, 68, 68, 0.15);
 }
 
 /* ────────────────────────────────────────────
@@ -206,6 +499,22 @@
   height: 20px;
 }
 .oly-ai-nav:hover svg {
+  fill: var(--primary-color);
+}
+
+/* Navbar icon ordering — CSS order guarantees consistent position
+   regardless of JS insertion timing.
+   Order: Email | Chat (35) | AI sparkles | Notifications | Help | Avatar */
+.navbar-nav > .email-navbar-icon  { order: -4; }
+.navbar-nav > .chat-navbar-icon   { order: -3; }
+.navbar-nav > .oly-ai-nav         { order: -2; }
+
+.email-navbar-icon {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+.email-navbar-icon:hover svg {
   fill: var(--primary-color);
 }
 
@@ -653,6 +962,12 @@
   background: white !important;
 }
 [data-theme="dark"] .oly-ai-send-btn svg {
+  fill: #1a1a1a !important;
+}
+[data-theme="dark"] .oly-ai-stop-btn {
+  background: white !important;
+}
+[data-theme="dark"] .oly-ai-stop-btn svg rect {
   fill: #1a1a1a !important;
 }
 [data-theme="dark"] .oly-ai-bubble {

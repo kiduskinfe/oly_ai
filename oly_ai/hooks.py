@@ -15,6 +15,9 @@ after_install = "oly_ai.setup.after_install"
 app_include_js = "oly_ai.bundle.js"
 app_include_css = "/assets/oly_ai/css/ai_panel.css"
 
+# Pass AI branding settings to frontend
+extend_bootinfo = "oly_ai.boot.extend_bootinfo"
+
 # DocType JS hooks — AI buttons on key doctypes
 doctype_js = {
     "Lead": "public/js/doctype_hooks/lead.js",
