@@ -426,6 +426,19 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 			"role": "system",
 			"content": f"Relevant company documents:\n\n{rag_context}",
 		})
+
+	# Cross-session memory — inject remembered facts/preferences
+	try:
+		from oly_ai.core.long_term_memory import get_user_memories
+		user_memories = get_user_memories(user)
+		if user_memories:
+			llm_messages.append({
+				"role": "system",
+				"content": user_memories,
+			})
+	except Exception:
+		pass
+
 	llm_messages.extend(conversation)
 
 	# Resolve file uploads for vision
@@ -565,6 +578,13 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 		try:
 			from oly_ai.core.memory import maybe_summarize_session
 			maybe_summarize_session(session)
+		except Exception:
+			pass
+
+		# Extract cross-session memories (long-term memory)
+		try:
+			from oly_ai.core.long_term_memory import extract_memories_from_session
+			extract_memories_from_session(session_name)
 		except Exception:
 			pass
 

@@ -31,6 +31,7 @@ thumbs_up: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="
 thumbs_down: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10zM17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17"/></svg>',
 mic: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>',
 speaker: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg>',
+brain: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a5 5 0 015 5c0 .8-.2 1.5-.5 2.2A5 5 0 0119 14a5 5 0 01-3 4.6V22h-2v-3.4A5 5 0 0111 14a5 5 0 01-2.5-4.3A5 5 0 017 7a5 5 0 015-5z"/><path d="M12 2v4"/><path d="M8 6.5C8 8 9.8 9 12 9s4-1 4-2.5"/></svg>',
 };
 oly_ai.ICON = ICON;
 
@@ -245,6 +246,7 @@ oly_ai.Panel = class {
           '<span style="font-weight:600;font-size:14px;color:var(--heading-color);">' + __("AI Assistant") + '</span>' +
         '</div>' +
         '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">' +
+          '<a href="/app/ai-user-memory" class="oly-ai-hact" style="display:flex;align-items:center;padding:6px;border-radius:6px;color:var(--text-muted);text-decoration:none;" title="' + __("Memory") + '">' + ICON.brain + '</a>' +
           '<a href="/app/ask-ai" class="oly-ai-hact" style="display:flex;align-items:center;padding:6px;border-radius:6px;color:var(--text-muted);text-decoration:none;" title="' + __("Full page") + '">' + ICON.expand + '</a>' +
           '<span class="oly-ai-hact" data-action="new" style="display:flex;align-items:center;padding:6px;border-radius:6px;color:var(--text-muted);cursor:pointer;" title="' + __("New chat") + '">' + ICON.plus + '</span>' +
         '</div>' +

@@ -1,0 +1,126 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-02-19 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "user",
+  "category",
+  "column_break_main",
+  "active",
+  "source_session",
+  "content_section",
+  "memory_text",
+  "metadata_section",
+  "extracted_at",
+  "last_accessed"
+ ],
+ "fields": [
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "label": "Category",
+   "options": "\nPreference\nFact\nInstruction\nContext\nWorkflow",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Type of memory: Preference (how user likes things), Fact (about user/role), Instruction (standing orders), Context (business context), Workflow (process knowledge)"
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "active",
+   "fieldtype": "Check",
+   "label": "Active",
+   "default": "1",
+   "in_list_view": 1,
+   "description": "Uncheck to disable this memory without deleting it"
+  },
+  {
+   "fieldname": "source_session",
+   "fieldtype": "Link",
+   "label": "Source Session",
+   "options": "AI Chat Session",
+   "read_only": 1,
+   "description": "The conversation this memory was extracted from"
+  },
+  {
+   "fieldname": "content_section",
+   "fieldtype": "Section Break",
+   "label": "Content"
+  },
+  {
+   "fieldname": "memory_text",
+   "fieldtype": "Small Text",
+   "label": "Memory",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "The fact, preference, or instruction to remember"
+  },
+  {
+   "fieldname": "metadata_section",
+   "fieldtype": "Section Break",
+   "label": "Metadata",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "extracted_at",
+   "fieldtype": "Datetime",
+   "label": "Extracted At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_accessed",
+   "fieldtype": "Datetime",
+   "label": "Last Accessed",
+   "read_only": 1,
+   "description": "Last time this memory was included in a conversation"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-02-19 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Oly AI",
+ "name": "AI User Memory",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 0,
+   "print": 0,
+   "read": 1,
+   "role": "System Manager",
+   "share": 0,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 0,
+   "print": 0,
+   "read": 1,
+   "role": "All",
+   "share": 0,
+   "write": 1,
+   "if_owner": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
+}

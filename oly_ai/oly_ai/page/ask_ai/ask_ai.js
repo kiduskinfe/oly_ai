@@ -438,6 +438,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
             '<button class="oly-fp-more-item" data-act="export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' + __("Export chat") + '</button>' +
             '<button class="oly-fp-more-item" data-act="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' + __("New chat") + '</button>' +
             '<button class="oly-fp-more-item" data-act="toggle-sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>' + __("Toggle sidebar") + '</button>' +
+            '<button class="oly-fp-more-item" data-act="memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a5 5 0 015 5c0 .8-.2 1.5-.5 2.2A5 5 0 0119 14a5 5 0 01-3 4.6V22h-2v-3.4A5 5 0 0111 14a5 5 0 01-2.5-4.3A5 5 0 017 7a5 5 0 015-5z"/><path d="M12 2v4"/><path d="M8 6.5C8 8 9.8 9 12 9s4-1 4-2.5"/></svg>' + __("Manage memory") + '</button>' +
           '</div>' +
         '</div>' +
       '</div>' +
@@ -1367,6 +1368,8 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     } else if (act === "toggle-sidebar") {
       sidebar_open = !sidebar_open;
       $fp.toggleClass("fp-sidebar-closed", !sidebar_open);
+    } else if (act === "memory") {
+      window.open("/app/ai-user-memory", "_blank");
     }
   });
 

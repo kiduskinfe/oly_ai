@@ -166,6 +166,18 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 				"content": f"Relevant company documents:\n\n{rag_context}",
 			})
 
+		# Cross-session memory — inject remembered facts/preferences
+		try:
+			from oly_ai.core.long_term_memory import get_user_memories
+			user_memories = get_user_memories(user)
+			if user_memories:
+				llm_messages.append({
+					"role": "system",
+					"content": user_memories,
+				})
+		except Exception:
+			pass
+
 		# Memory: include conversation summary if available
 		try:
 			from oly_ai.core.memory import get_session_context
@@ -287,6 +299,13 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 		try:
 			from oly_ai.core.memory import maybe_summarize_session
 			maybe_summarize_session(session)
+		except Exception:
+			pass
+
+		# Extract cross-session memories (long-term memory)
+		try:
+			from oly_ai.core.long_term_memory import extract_memories_from_session
+			extract_memories_from_session(session.name)
 		except Exception:
 			pass
 
