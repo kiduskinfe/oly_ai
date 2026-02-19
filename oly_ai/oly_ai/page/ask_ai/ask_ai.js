@@ -568,7 +568,10 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         var active = current_session === s.name ? " active" : "";
         var is_mine = s.is_owner !== false;
         html += '<div class="oly-fp-sb-item' + active + '" data-name="' + s.name + '" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:0.8125rem;color:var(--text-color);position:relative;transition:background .12s;">';
-        html += '<span class="oly-fp-sb-item-title" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + frappe.utils.escape_html(s.title || __("Untitled"));
+        html += '<span class="oly-fp-sb-item-title" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px;">' + frappe.utils.escape_html(s.title || __("Untitled"));
+        if (is_mine && s.shared_count) {
+          html += '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" style="flex-shrink:0;opacity:0.7;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
+        }
         if (!is_mine && s.owner_name) {
           html += '<span class="oly-fp-shared-badge">' + frappe.utils.escape_html(s.owner_name) + '</span>';
         }

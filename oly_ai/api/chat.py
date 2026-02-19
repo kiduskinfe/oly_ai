@@ -283,6 +283,8 @@ def get_sessions(search=None, limit=50, offset=0, filter_type=None):
 		s["message_count"] = msg_count
 		s["is_owner"] = s["user"] == user
 		s["owner_name"] = frappe.db.get_value("User", s["user"], "full_name") if s["user"] != user else ""
+		# Number of users this session is shared with (useful for showing shared icon)
+		s["shared_count"] = frappe.db.count("AI Chat Shared User", {"parent": s.name})
 
 	return sessions
 
