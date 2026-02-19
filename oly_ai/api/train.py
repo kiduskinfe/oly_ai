@@ -7,6 +7,103 @@ from frappe.utils import now_datetime
 
 
 @frappe.whitelist()
+def discover_doctypes():
+	"""Discover all DocTypes in the system that have data and are useful for RAG indexing.
+
+	Finds all non-table, non-single, non-virtual DocTypes that have at least 1 record.
+	Excludes internal/system DocTypes that aren't useful for AI training.
+
+	Returns:
+		dict: {"discovered": N, "added": N, "already_present": N, "doctypes": [...]}
+	"""
+	frappe.only_for(["System Manager", "Administrator"])
+
+	# System/internal doctypes to exclude — not useful for RAG
+	EXCLUDED_DOCTYPES = {
+		# Frappe core system tables
+		"DocType", "DocField", "DocPerm", "Custom Field", "Custom DocPerm",
+		"Property Setter", "DocType Action", "DocType Link", "DocType State",
+		"Module Def", "Module Profile", "Package", "Package Import",
+		# System logs & metadata
+		"Error Log", "Activity Log", "Access Log", "Route History",
+		"Error Snapshot", "Scheduled Job Log", "Scheduled Job Type",
+		"RQ Job", "RQ Worker",
+		# Auth & sessions
+		"Session Default Settings", "Sessions", "OAuth Bearer Token",
+		"OAuth Authorization Code", "OAuth Client",
+		# File & cache internals
+		"File", "Prepared Report",
+		# Print / Email internals
+		"Print Format", "Print Style", "Email Template", "Notification Log",
+		"Email Queue", "Email Unsubscribe",
+		# Translation / patches
+		"Translation", "Patch Log", "DefaultValue",
+		# oly_ai internal tables (already used differently)
+		"AI Document Index", "AI Chat Session", "AI Chat Message",
+		"AI Action Log", "AI User Memory", "AI Chat Shared User",
+	}
+
+	# Get all non-table, non-single, non-virtual DocTypes
+	all_doctypes = frappe.get_all(
+		"DocType",
+		filters={
+			"istable": 0,
+			"issingle": 0,
+			"is_virtual": 0,
+			"module": ["not in", ["Core", "Custom", "Email", "Printing", "Website"]],
+		},
+		pluck="name",
+		order_by="name asc",
+	)
+
+	# Filter: must have data and not be excluded
+	discovered = []
+	for dt in all_doctypes:
+		if dt in EXCLUDED_DOCTYPES:
+			continue
+		try:
+			count = frappe.db.count(dt)
+			if count > 0:
+				discovered.append({"doctype": dt, "count": count})
+		except Exception:
+			# Table might not exist or other DB issues
+			continue
+
+	# Now add to AI Settings indexed_doctypes table (skip already present)
+	settings = frappe.get_doc("AI Settings")
+	existing = {row.document_type for row in settings.get("indexed_doctypes", [])}
+
+	added = 0
+	already_present = 0
+	added_names = []
+
+	for item in discovered:
+		if item["doctype"] in existing:
+			already_present += 1
+		else:
+			settings.append("indexed_doctypes", {
+				"document_type": item["doctype"],
+				"enabled": 1,
+				"auto_index": 1,
+			})
+			added += 1
+			added_names.append(item["doctype"])
+
+	if added > 0:
+		settings.flags.ignore_permissions = True
+		settings.save()
+		frappe.db.commit()
+
+	return {
+		"discovered": len(discovered),
+		"added": added,
+		"already_present": already_present,
+		"doctypes": discovered,
+		"added_names": added_names,
+	}
+
+
+@frappe.whitelist()
 def index_doctype_full(doctype, limit=500):
 	"""Index all documents of a given DocType. Updates the AI Indexed DocType stats.
 
