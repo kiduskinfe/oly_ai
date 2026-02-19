@@ -1643,7 +1643,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   var mode_recommended_models = {
     ask: 'gpt-4o-mini',       // Fast, cheap, good for Q&A
     research: 'gpt-5.2',      // Best quality, thorough analysis
-    agent: 'gpt-5.1',         // Smart + fast, good with tools
+    agent: 'gpt-5.2',         // Most capable, best for agent tasks
     execute: 'gpt-4o-mini',   // Fast, reliable for structured actions
   };
 
