@@ -273,7 +273,6 @@ oly_ai.Panel = class {
 
     var mode_opts = [
       { value: 'ask', label: __('Ask') },
-      { value: 'research', label: __('Research') },
       { value: 'agent', label: __('Agent') },
       { value: 'execute', label: __('Execute') },
     ].map(function (m) {
@@ -735,9 +734,9 @@ oly_ai.Panel = class {
     // Mode selector (dropdown)
     this.$panel.find('#panel-mode-sel').on('change', function () {
       me.current_mode = $(this).val();
-      var ph = { ask: __("Ask anything..."), research: __("Research in depth..."), agent: __("Describe what you need..."), execute: __("What action to execute?") };
+      var ph = { ask: __("Ask anything..."), agent: __("Describe what you need..."), execute: __("What action to execute?") };
       me.$input.attr('placeholder', ph[me.current_mode] || ph.ask);
-      var rec = { ask: 'gpt-4o-mini', research: 'gpt-5.2', agent: 'gpt-5.2', execute: 'gpt-4o-mini' };
+      var rec = { ask: 'gpt-4o-mini', agent: 'gpt-5.2', execute: 'gpt-4o-mini' };
       if (rec[me.current_mode] && me.$model.find('option[value="' + rec[me.current_mode] + '"]').length) {
         me.$model.val(rec[me.current_mode]);
         me.current_model = rec[me.current_mode];

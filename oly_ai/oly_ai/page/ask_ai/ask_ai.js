@@ -466,7 +466,6 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         '<div style="flex:1;"></div>' +
         '<div class="oly-fp-mode-sel" id="fp-mode-sel">' +
           '<button class="oly-fp-mode active" data-mode="ask">' + __("Ask") + '</button>' +
-          '<button class="oly-fp-mode" data-mode="research">' + __("Research") + '</button>' +
           '<button class="oly-fp-mode" data-mode="agent">' + __("Agent") + '</button>' +
           '<button class="oly-fp-mode" data-mode="execute">' + __("Execute") + '</button>' +
         '</div>' +
@@ -1642,8 +1641,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   // Recommended models per mode based on testing
   var mode_recommended_models = {
     ask: 'gpt-4o-mini',       // Fast, cheap, good for Q&A
-    research: 'gpt-5.2',      // Best quality, thorough analysis
-    agent: 'gpt-5.2',         // Most capable, best for agent tasks
+    agent: 'gpt-5.2',         // Most capable, deep analysis + agent tasks
     execute: 'gpt-4o-mini',   // Fast, reliable for structured actions
   };
 
@@ -1653,7 +1651,6 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     current_mode = $(this).data("mode");
     var placeholders = {
       ask: __("Message AI..."),
-      research: __("What should I research in depth?"),
       agent: __("Describe what you need help with..."),
       execute: __("What action should I execute?"),
     };

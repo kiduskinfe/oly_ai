@@ -21,19 +21,19 @@ TIER_PERMISSIONS = {
 		"can_use_agent_mode": False,
 	},
 	"Standard": {
-		"allowed_modes": ["ask", "research"],
+		"allowed_modes": ["ask"],
 		"can_query_data": False,
 		"can_execute_actions": False,
 		"can_use_agent_mode": False,
 	},
 	"Power": {
-		"allowed_modes": ["ask", "research", "agent"],
+		"allowed_modes": ["ask", "agent"],
 		"can_query_data": True,
 		"can_execute_actions": False,
 		"can_use_agent_mode": True,
 	},
 	"Admin": {
-		"allowed_modes": ["ask", "research", "agent", "execute"],
+		"allowed_modes": ["ask", "agent", "execute"],
 		"can_query_data": True,
 		"can_execute_actions": True,
 		"can_use_agent_mode": True,
@@ -66,7 +66,7 @@ def check_user_access(user=None):
 	if user == "Administrator":
 		return {
 			"tier": "Admin",
-			"allowed_modes": ["ask", "research", "agent", "execute"],
+			"allowed_modes": ["ask", "agent", "execute"],
 			"can_query_data": True,
 			"can_execute_actions": True,
 			"can_use_agent_mode": True,
@@ -79,7 +79,7 @@ def check_user_access(user=None):
 	if not settings.enable_access_control:
 		return {
 			"tier": "Admin",
-			"allowed_modes": ["ask", "research", "agent", "execute"],
+			"allowed_modes": ["ask", "agent", "execute"],
 			"can_query_data": True,
 			"can_execute_actions": True,
 			"can_use_agent_mode": True,

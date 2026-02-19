@@ -145,10 +145,10 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 		if not SYSTEM_PROMPTS:
 			SYSTEM_PROMPTS = {
 				"ask": "You are an AI assistant for ERPNext ERP system at OLY Technologies. Be concise and helpful. Format responses with markdown when helpful.",
-				"research": "You are a deep research AI for OLY Technologies' ERPNext system. Conduct thorough analysis and produce comprehensive research reports.",
-				"agent": "You are an advanced AI agent for OLY Technologies' ERPNext system. Think step-by-step, analyze deeply, and provide comprehensive solutions.",
+				"agent": "You are an advanced AI agent for OLY Technologies' ERPNext system. Think step-by-step, analyze deeply, and provide comprehensive solutions. For research questions, produce structured reports.",
 				"execute": "You are an AI execution assistant for OLY Technologies' ERPNext. Generate precise, actionable execution plans for tasks in ERPNext.",
 			}
+			SYSTEM_PROMPTS["research"] = SYSTEM_PROMPTS["agent"]  # backward compat
 		system_prompt = SYSTEM_PROMPTS.get(mode, SYSTEM_PROMPTS["ask"])
 
 		# RAG context
