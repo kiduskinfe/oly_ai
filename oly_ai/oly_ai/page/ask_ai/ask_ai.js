@@ -195,6 +195,12 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   var stream_poll_msg_count = 0;  // message count when stream started
   var _sending_safety_timer = null;  // safety timer to re-enable input
   var _active_request_id = null;    // tracks active request for cancellation
+  var _fp_recording = false;
+  var _fp_media_recorder = null;
+  var _fp_audio_chunks = [];
+  var _fp_rec_stream = null;
+  var _fp_rec_timer = null;
+  var _fp_tts_audio = null;
 
   var I = oly_ai.ICON;
 
@@ -444,6 +450,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
           '<span class="oly-fp-attach-btn" id="fp-attach" style="cursor:pointer;color:var(--text-muted);display:flex;align-items:center;padding:4px;flex-shrink:0;" title="' + __("Attach file or image") + '">' + clip_icon + '</span>' +
           '<input type="file" id="fp-file-input" multiple accept="image/*,.pdf,.txt,.csv,.xlsx,.xls,.doc,.docx,.json,.xml,.md,.ppt,.pptx" style="display:none;" />' +
           '<textarea id="fp-input" rows="1" placeholder="' + __("Message AI...") + '" maxlength="4000" style="flex:1;border:none;background:transparent;color:var(--text-color);font-size:0.9rem;resize:none;min-height:24px;max-height:150px;line-height:1.5;outline:none;font-family:inherit;padding:4px 0;"></textarea>' +
+          '<span id="fp-mic-btn" style="cursor:pointer;height:32px;width:32px;min-width:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex-shrink:0;transition:all 0.2s;" title="' + __("Voice input") + '">' + I.mic + '</span>' +
           '<span class="oly-ai-send-btn" id="fp-send" style="cursor:pointer;height:32px;width:32px;min-width:32px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + I.send + '</span>' +
         '</div>' +
         '<p style="text-align:center;font-size:0.7rem;color:var(--text-muted);margin:6px 0 0;">' + __("AI can make mistakes. Verify important information.") + '</p>' +
@@ -778,12 +785,14 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
           rendered +
           '<div style="display:flex;align-items:center;gap:12px;margin-top:6px;font-size:0.75rem;">' +
             '<span class="oly-ai-copy-btn" data-text="' + frappe.utils.escape_html(content) + '" style="cursor:pointer;color:var(--text-muted);display:flex;align-items:center;gap:4px;transition:color .15s;">' + I.copy + ' Copy</span>' +
+            '<span class="oly-ai-tts-btn" style="cursor:pointer;color:var(--text-muted);display:flex;align-items:center;gap:4px;transition:color .15s;" title="' + __("Listen") + '">' + I.speaker + '</span>' +
             (parts ? '<span style="color:var(--text-light);">' + parts + '</span>' : '') +
           '</div>' +
         '</div>' +
       '</div></div>'
     );
     wire_copy();
+    wire_tts();
   }
 
   function r_model(m) { return m && m.model ? m.model : ""; }
@@ -1050,10 +1059,12 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       oly_ai.render_markdown(content) +
       '<div style="display:flex;align-items:center;gap:12px;margin-top:6px;font-size:0.75rem;">' +
         '<span class="oly-ai-copy-btn" data-text="' + frappe.utils.escape_html(content) + '" style="cursor:pointer;color:var(--text-muted);display:flex;align-items:center;gap:4px;transition:color .15s;">' + I.copy + ' Copy</span>' +
+        '<span class="oly-ai-tts-btn" style="cursor:pointer;color:var(--text-muted);display:flex;align-items:center;gap:4px;transition:color .15s;" title="Listen">' + I.speaker + '</span>' +
         (parts ? '<span style="color:var(--text-light);">' + parts + '</span>' : '') +
       '</div>'
     );
     wire_copy();
+    wire_tts();
     enhance_code_blocks();
 
     // Handle pending actions
@@ -1157,6 +1168,9 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     $fp.toggleClass("fp-sidebar-closed", !sidebar_open);
   });
   $send.on("click", send_message);
+  $("#fp-mic-btn").on("click", function () {
+    if (_fp_recording) fp_stop_recording(); else fp_start_recording();
+  });
   $input.on("keydown", function (e) {
     if (e.which === 13 && !e.shiftKey) { e.preventDefault(); send_message(); }
   });
@@ -1403,6 +1417,139 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     setTimeout(align_with_navbar, 50);
   });
   $(window).on("resize", align_with_navbar);
+
+  // ── Voice: Recording ──
+  function fp_start_recording() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      frappe.show_alert({ message: __('Your browser does not support microphone access'), indicator: 'red' });
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      _fp_recording = true;
+      _fp_audio_chunks = [];
+      _fp_rec_stream = stream;
+      var options = MediaRecorder.isTypeSupported('audio/webm') ? { mimeType: 'audio/webm' } : {};
+      _fp_media_recorder = new MediaRecorder(stream, options);
+      _fp_media_recorder.ondataavailable = function (e) {
+        if (e.data.size > 0) _fp_audio_chunks.push(e.data);
+      };
+      _fp_media_recorder.onstop = function () {
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        var blob = new Blob(_fp_audio_chunks, { type: _fp_media_recorder.mimeType || 'audio/webm' });
+        _fp_audio_chunks = [];
+        fp_send_voice(blob);
+      };
+      _fp_media_recorder.start();
+      // Visual: red pulsing mic
+      var $mic = $('#fp-mic-btn');
+      $mic.css({ background: 'var(--red)', color: 'white', 'border-radius': '50%' });
+      $mic.html('<svg width="16" height="16" viewBox="0 0 24 24" fill="white" stroke="none"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/></svg>');
+      $mic.css('animation', 'oly-pulse 1.2s ease-in-out infinite');
+      if (!document.getElementById('oly-pulse-kf')) {
+        var style = document.createElement('style');
+        style.id = 'oly-pulse-kf';
+        style.textContent = '@keyframes oly-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.7;transform:scale(1.1)}}';
+        document.head.appendChild(style);
+      }
+      _fp_rec_timer = setTimeout(function () { if (_fp_recording) fp_stop_recording(); }, 60000);
+    }).catch(function (err) {
+      console.error('Mic access denied:', err);
+      frappe.show_alert({ message: __('Microphone access denied'), indicator: 'orange' });
+    });
+  }
+
+  function fp_stop_recording() {
+    _fp_recording = false;
+    if (_fp_rec_timer) { clearTimeout(_fp_rec_timer); _fp_rec_timer = null; }
+    if (_fp_media_recorder && _fp_media_recorder.state !== 'inactive') {
+      _fp_media_recorder.stop();
+    }
+    var $mic = $('#fp-mic-btn');
+    $mic.css({ background: 'transparent', color: 'var(--text-muted)', animation: 'none' });
+    $mic.html(I.mic);
+  }
+
+  function fp_send_voice(blob) {
+    $input.attr('placeholder', __('Transcribing...'));
+    var $mic = $('#fp-mic-btn');
+    $mic.css('opacity', '0.5').css('pointer-events', 'none');
+
+    var fd = new FormData();
+    fd.append('audio', blob, 'voice.webm');
+
+    $.ajax({
+      url: '/api/method/oly_ai.api.voice.voice_to_text',
+      type: 'POST',
+      data: fd,
+      processData: false,
+      contentType: false,
+      headers: { 'X-Frappe-CSRF-Token': frappe.csrf_token },
+      success: function (r) {
+        var text = (r && r.message && r.message.text) || '';
+        if (text) {
+          $input.val(text);
+          $input[0].style.height = 'auto';
+          $input[0].style.height = Math.min($input[0].scrollHeight, 150) + 'px';
+          send_message();
+        } else {
+          frappe.show_alert({ message: __('Could not transcribe audio'), indicator: 'orange' });
+        }
+      },
+      error: function (xhr) {
+        var msg = __('Transcription failed');
+        try { msg = JSON.parse(xhr.responseText)._server_messages; msg = JSON.parse(msg); msg = JSON.parse(msg[0]).message; } catch(e) {}
+        frappe.show_alert({ message: msg, indicator: 'red' });
+      },
+      complete: function () {
+        $mic.css('opacity', '1').css('pointer-events', 'auto');
+        $input.attr('placeholder', __('Message AI...'));
+      }
+    });
+  }
+
+  // ── Voice: TTS Playback ──
+  function wire_tts() {
+    $msgs.find('.oly-ai-tts-btn').off('click').on('click', function () {
+      var $btn = $(this);
+      var txt = $btn.closest('div[style*="display:flex"]').siblings().not('div[style*="display:flex"]').text();
+      if (!txt) txt = $btn.closest('div[style*="flex:1"]').clone().children('div[style*="display:flex"]').remove().end().text();
+      fp_play_tts($btn, txt);
+    });
+  }
+
+  function fp_play_tts($btn, text) {
+    if (!text || !text.trim()) return;
+    if (_fp_tts_audio && !_fp_tts_audio.paused) {
+      _fp_tts_audio.pause();
+      _fp_tts_audio = null;
+      $btn.html(I.speaker).css('color', 'var(--text-muted)');
+      return;
+    }
+    var send_text = text.trim().substring(0, 4096);
+    $btn.html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10" stroke-dasharray="30 60"/></svg>').css('color', oly_ai.brand_color());
+    frappe.call({
+      method: 'oly_ai.api.voice.text_to_speech',
+      args: { text: send_text },
+      callback: function (r) {
+        var data = r && r.message;
+        if (data && data.audio_base64) {
+          var audio = new Audio('data:' + (data.content_type || 'audio/mpeg') + ';base64,' + data.audio_base64);
+          _fp_tts_audio = audio;
+          $btn.html(I.stop).css('color', oly_ai.brand_color());
+          audio.onended = function () { $btn.html(I.speaker).css('color', 'var(--text-muted)'); _fp_tts_audio = null; };
+          audio.onerror = function () { $btn.html(I.speaker).css('color', 'var(--text-muted)'); _fp_tts_audio = null; };
+          audio.play();
+        } else {
+          $btn.html(I.speaker).css('color', 'var(--text-muted)');
+          frappe.show_alert({ message: __('TTS failed'), indicator: 'red' });
+        }
+      },
+      error: function () {
+        $btn.html(I.speaker).css('color', 'var(--text-muted)');
+        frappe.show_alert({ message: __('TTS failed'), indicator: 'red' });
+      }
+    });
+  }
 
   // ── Init ──
   show_welcome();

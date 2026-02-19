@@ -29,6 +29,8 @@ stop: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="none"
 history: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
 thumbs_up: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>',
 thumbs_down: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10zM17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17"/></svg>',
+mic: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>',
+speaker: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg>',
 };
 oly_ai.ICON = ICON;
 
@@ -282,6 +284,7 @@ oly_ai.Panel = class {
           '<input type="file" id="panel-file-input" multiple accept="image/*,.pdf,.txt,.csv,.xlsx,.xls,.doc,.docx,.json,.xml,.md" style="display:none;" />' +
           '<textarea class="oly-ai-input" rows="1" placeholder="' + __("Ask anything...") + '" maxlength="4000"' +
           ' style="flex:1;margin:0;border-radius:18px;font-size:0.875rem;border:1px solid var(--dark-border-color);background:var(--control-bg);color:var(--text-color);padding:8px 14px;resize:none;min-height:36px;max-height:120px;line-height:1.4;outline:none;font-family:inherit;overflow:hidden;"></textarea>' +
+          '<span id="panel-mic-btn" style="cursor:pointer;height:2rem;width:2rem;min-width:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex-shrink:0;transition:all 0.2s;" title="' + __("Voice input") + '">' + ICON.mic + '</span>' +
           '<span class="oly-ai-send-btn" id="panel-send-btn" style="cursor:pointer;height:2rem;width:2rem;min-width:2rem;border-radius:50%;background:var(--primary-color);display:flex;align-items:center;justify-content:center;position:relative;z-index:2;flex-shrink:0;">' + ICON.send + '</span>' +
         '</div>' +
         '<div class="oly-ai-input-footer" style="display:flex;align-items:center;justify-content:space-between;padding-top:6px;">' +
@@ -296,9 +299,14 @@ oly_ai.Panel = class {
 
     this.$input = this.$panel.find('.oly-ai-input');
     this.$send = this.$panel.find('#panel-send-btn');
+    this.$mic = this.$panel.find('#panel-mic-btn');
     this.$model = this.$panel.find('#panel-model-sel');
     this.$title = this.$panel.find('.oly-ai-header-title');
     this._attached_files = [];
+    this._recording = false;
+    this._media_recorder = null;
+    this._audio_chunks = [];
+    this._tts_audio = null;
 
     // Apply dark mode send button styling inline (CSS caching unreliable)
     if (document.documentElement.getAttribute('data-theme') === 'dark') {
@@ -520,7 +528,16 @@ oly_ai.Panel = class {
       $btn.css('color', fb === 'up' ? 'var(--green)' : 'var(--red)');
       $btn.siblings('.oly-ai-fb-btn').css('color', 'var(--text-muted)');
     });
+    // TTS speaker button (event delegation)
+    this.$panel.on('click', '.oly-ai-tts-btn', function () {
+      var txt = $(this).closest('.oly-ai-msg-footer').siblings().not('.oly-ai-msg-footer').text();
+      if (!txt) txt = $(this).closest('.oly-ai-msg-content').find('.markdown-content, .oly-ai-msg-content > *:not(.oly-ai-msg-footer)').text();
+      me._play_tts($(this), txt);
+    });
     this.$panel.on('click', '#panel-send-btn', function () { me.send(); });
+    this.$panel.on('click', '#panel-mic-btn', function () {
+      if (me._recording) me._stop_recording(); else me._start_recording();
+    });
     this.$input.on('keydown', function (e) {
       if (e.which === 13 && !e.shiftKey) { e.preventDefault(); me.send(); }
     });
@@ -930,6 +947,7 @@ oly_ai.Panel = class {
           oly_ai.render_markdown(content) +
           '<div class="oly-ai-msg-footer" style="display:flex;align-items:center;gap:8px;margin-top:6px;padding-top:4px;border-top:1px solid var(--border-color);">' +
             '<span class="oly-ai-copy-btn" style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-muted);font-size:0.75rem;" data-text="' + frappe.utils.escape_html(content) + '">' + ICON.copy + ' Copy</span>' +
+            '<span class="oly-ai-tts-btn" style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-muted);font-size:0.75rem;" title="Listen">' + ICON.speaker + '</span>' +
             '<span class="oly-ai-fb-btn" data-fb="up" style="display:inline-flex;align-items:center;cursor:pointer;color:var(--text-muted);padding:2px;" title="Helpful">' + ICON.thumbs_up + '</span>' +
             '<span class="oly-ai-fb-btn" data-fb="down" style="display:inline-flex;align-items:center;cursor:pointer;color:var(--text-muted);padding:2px;" title="Not helpful">' + ICON.thumbs_down + '</span>' +
             (meta ? '<span class="oly-ai-msg-meta" style="margin-left:auto;font-size:0.6875rem;color:var(--text-muted);">' + meta + '</span>' : '') +
@@ -1050,6 +1068,7 @@ oly_ai.Panel = class {
       '<div class="oly-ai-msg-content" style="flex:1;min-width:0;background:var(--control-bg);border-radius:4px 18px 18px 18px;padding:10px 14px;font-size:0.8125rem;line-height:1.6;">' + rendered +
         '<div class="oly-ai-msg-footer" style="display:flex;align-items:center;gap:8px;margin-top:6px;padding-top:4px;border-top:1px solid var(--border-color);">' +
           '<span class="oly-ai-copy-btn" style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-muted);font-size:0.75rem;" data-text="' + frappe.utils.escape_html(content) + '">' + ICON.copy + ' ' + __("Copy") + '</span>' +
+          '<span class="oly-ai-tts-btn" style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-muted);font-size:0.75rem;" title="' + __("Listen") + '">' + ICON.speaker + '</span>' +
           '<span class="oly-ai-fb-btn" data-fb="up" style="display:inline-flex;align-items:center;cursor:pointer;color:var(--text-muted);padding:2px;" title="' + __("Helpful") + '">' + ICON.thumbs_up + '</span>' +
           '<span class="oly-ai-fb-btn" data-fb="down" style="display:inline-flex;align-items:center;cursor:pointer;color:var(--text-muted);padding:2px;" title="' + __("Not helpful") + '">' + ICON.thumbs_down + '</span>' +
           (meta ? '<span class="oly-ai-msg-meta" style="margin-left:auto;font-size:0.6875rem;color:var(--text-muted);">' + meta + '</span>' : '') +
@@ -1074,6 +1093,138 @@ oly_ai.Panel = class {
   _scroll() {
     var el = this.$body[0];
     if (el) setTimeout(function () { el.scrollTop = el.scrollHeight; }, 50);
+  }
+
+  // ── Voice: Recording ──
+  _start_recording() {
+    var me = this;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      frappe.show_alert({ message: __('Your browser does not support microphone access'), indicator: 'red' });
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      me._recording = true;
+      me._audio_chunks = [];
+      me._rec_stream = stream;
+      var options = MediaRecorder.isTypeSupported('audio/webm') ? { mimeType: 'audio/webm' } : {};
+      me._media_recorder = new MediaRecorder(stream, options);
+      me._media_recorder.ondataavailable = function (e) {
+        if (e.data.size > 0) me._audio_chunks.push(e.data);
+      };
+      me._media_recorder.onstop = function () {
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        var blob = new Blob(me._audio_chunks, { type: me._media_recorder.mimeType || 'audio/webm' });
+        me._audio_chunks = [];
+        me._send_voice(blob);
+      };
+      me._media_recorder.start();
+      // Visual: red pulsing mic
+      me.$mic.css({ background: 'var(--red)', color: 'white', 'border-radius': '50%' });
+      me.$mic.html('<svg width="16" height="16" viewBox="0 0 24 24" fill="white" stroke="none"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/></svg>');
+      me.$mic.css('animation', 'oly-pulse 1.2s ease-in-out infinite');
+      // Inject keyframes if not present
+      if (!document.getElementById('oly-pulse-kf')) {
+        var style = document.createElement('style');
+        style.id = 'oly-pulse-kf';
+        style.textContent = '@keyframes oly-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.7;transform:scale(1.1)}}';
+        document.head.appendChild(style);
+      }
+      // Auto-stop after 60s
+      me._rec_timer = setTimeout(function () { if (me._recording) me._stop_recording(); }, 60000);
+    }).catch(function (err) {
+      console.error('Mic access denied:', err);
+      frappe.show_alert({ message: __('Microphone access denied'), indicator: 'orange' });
+    });
+  }
+
+  _stop_recording() {
+    this._recording = false;
+    if (this._rec_timer) { clearTimeout(this._rec_timer); this._rec_timer = null; }
+    if (this._media_recorder && this._media_recorder.state !== 'inactive') {
+      this._media_recorder.stop();
+    }
+    // Reset mic button
+    this.$mic.css({ background: 'transparent', color: 'var(--text-muted)', animation: 'none' });
+    this.$mic.html(ICON.mic);
+  }
+
+  _send_voice(blob) {
+    var me = this;
+    // Show transcribing indicator
+    me.$input.attr('placeholder', __('Transcribing...'));
+    me.$mic.css('opacity', '0.5').css('pointer-events', 'none');
+
+    var fd = new FormData();
+    fd.append('audio', blob, 'voice.webm');
+
+    $.ajax({
+      url: '/api/method/oly_ai.api.voice.voice_to_text',
+      type: 'POST',
+      data: fd,
+      processData: false,
+      contentType: false,
+      headers: { 'X-Frappe-CSRF-Token': frappe.csrf_token },
+      success: function (r) {
+        var text = (r && r.message && r.message.text) || '';
+        if (text) {
+          me.$input.val(text);
+          me.$input[0].style.height = 'auto';
+          me.$input[0].style.height = Math.min(me.$input[0].scrollHeight, 120) + 'px';
+          // Auto-send the transcribed text
+          me.send();
+        } else {
+          frappe.show_alert({ message: __('Could not transcribe audio'), indicator: 'orange' });
+        }
+      },
+      error: function (xhr) {
+        var msg = __('Transcription failed');
+        try { msg = JSON.parse(xhr.responseText)._server_messages; msg = JSON.parse(msg); msg = JSON.parse(msg[0]).message; } catch(e) {}
+        frappe.show_alert({ message: msg, indicator: 'red' });
+      },
+      complete: function () {
+        me.$mic.css('opacity', '1').css('pointer-events', 'auto');
+        var ph = { ask: __('Ask anything...'), research: __('Research in depth...'), agent: __('Describe what you need...'), execute: __('What action to execute?') };
+        me.$input.attr('placeholder', ph[me.current_mode] || ph.ask);
+      }
+    });
+  }
+
+  // ── Voice: TTS Playback ──
+  _play_tts($btn, text) {
+    var me = this;
+    if (!text || !text.trim()) return;
+    // If already playing, stop
+    if (me._tts_audio && !me._tts_audio.paused) {
+      me._tts_audio.pause();
+      me._tts_audio = null;
+      $btn.html(ICON.speaker).css('color', 'var(--text-muted)');
+      return;
+    }
+    // Limit text sent to TTS
+    var send_text = text.trim().substring(0, 4096);
+    $btn.html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10" stroke-dasharray="30 60"/></svg>').css('color', oly_ai.brand_color());
+    frappe.call({
+      method: 'oly_ai.api.voice.text_to_speech',
+      args: { text: send_text },
+      callback: function (r) {
+        var data = r && r.message;
+        if (data && data.audio_base64) {
+          var audio = new Audio('data:' + (data.content_type || 'audio/mpeg') + ';base64,' + data.audio_base64);
+          me._tts_audio = audio;
+          $btn.html(ICON.stop).css('color', oly_ai.brand_color());
+          audio.onended = function () { $btn.html(ICON.speaker).css('color', 'var(--text-muted)'); me._tts_audio = null; };
+          audio.onerror = function () { $btn.html(ICON.speaker).css('color', 'var(--text-muted)'); me._tts_audio = null; };
+          audio.play();
+        } else {
+          $btn.html(ICON.speaker).css('color', 'var(--text-muted)');
+          frappe.show_alert({ message: __('TTS failed'), indicator: 'red' });
+        }
+      },
+      error: function () {
+        $btn.html(ICON.speaker).css('color', 'var(--text-muted)');
+        frappe.show_alert({ message: __('TTS failed'), indicator: 'red' });
+      }
+    });
   }
 };
 
