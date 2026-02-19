@@ -290,6 +290,7 @@ def _queue_auto_index(doctype, name, action):
 				name=name,
 				queue="short",
 				deduplicate=True,
+				job_id=f"oly_ai_index_{doctype}_{name}",
 			)
 	except Exception:
 		# Never break the parent save operation
