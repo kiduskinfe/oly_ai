@@ -158,6 +158,31 @@ oly_ai.add_ai_buttons = function (frm, features) {
   }, 300);
 };
 
+// ─── Global: Add AI buttons to ALL doctypes automatically ────
+// Doctype-specific hooks can still override with custom features.
+// This ensures every form gets at least "Summarize" + "Ask AI..."
+oly_ai._ai_buttons_added = {};
+$(document).on('form-refresh', function (e, frm) {
+  if (!frm || !frm.doctype || !frm.docname) return;
+  // Skip non-document forms, cancelled docs, and new unsaved docs
+  if (frm.doc.docstatus === 2 || frm.is_new()) return;
+  // Skip if a doctype-specific hook already added buttons
+  var key = frm.doctype + ':' + frm.docname;
+  if (oly_ai._ai_buttons_added[key]) return;
+  // Check if AI buttons already exist (added by a doctype_js hook)
+  var group = __("AI Assist");
+  var encoded = encodeURIComponent(group);
+  if (frm.page.inner_toolbar.find('.inner-group-button[data-label="' + encoded + '"]').length) {
+    oly_ai._ai_buttons_added[key] = true;
+    return;
+  }
+  // Add default AI buttons
+  oly_ai.add_ai_buttons(frm, ["Summarize"]);
+  oly_ai._ai_buttons_added[key] = true;
+});
+// Clear cache on route change so buttons re-render on next form
+$(document).on('page-change', function () { oly_ai._ai_buttons_added = {}; });
+
 // ═══════════════════════════════════════════════════════════════
 // AI PANEL — Full-featured widget
 // ═══════════════════════════════════════════════════════════════
