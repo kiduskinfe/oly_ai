@@ -248,6 +248,7 @@ oly_ai.Panel = class {
         '</div>' +
         '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">' +
           '<a href="/app/ai-user-memory" class="oly-ai-hact" style="display:flex;align-items:center;padding:6px;border-radius:6px;color:var(--text-muted);text-decoration:none;" title="' + __("Memory") + '">' + ICON.brain + '</a>' +
+          '<span class="oly-ai-hact" data-action="export" style="display:flex;align-items:center;padding:6px;border-radius:6px;color:var(--text-muted);cursor:pointer;" title="' + __("Export chat") + '"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>' +
           '<a href="/app/ask-ai" class="oly-ai-hact" style="display:flex;align-items:center;padding:6px;border-radius:6px;color:var(--text-muted);text-decoration:none;" title="' + __("Full page") + '">' + ICON.expand + '</a>' +
           '<span class="oly-ai-hact" data-action="new" style="display:flex;align-items:center;padding:6px;border-radius:6px;color:var(--text-muted);cursor:pointer;" title="' + __("New chat") + '">' + ICON.plus + '</span>' +
         '</div>' +
@@ -354,6 +355,15 @@ oly_ai.Panel = class {
         e.preventDefault();
         me.change_bubble();
       }
+      // Ctrl+K — open history & focus search
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K') && !e.shiftKey) {
+        e.preventDefault();
+        if (!me.is_open) me.change_bubble();
+        me._load_sessions(function () {
+          me._show_history_view();
+          setTimeout(function () { me.$history.find('.oly-ai-hist-search').focus(); }, 100);
+        });
+      }
     });
   }
 
@@ -410,32 +420,19 @@ oly_ai.Panel = class {
       '</div>';
     } else {
       html += '<div class="oly-ai-hist-list" style="padding:8px;">';
-      var groups = this._group_sessions(this.sessions);
+      // Separate pinned items
+      var pinned = this.sessions.filter(function (s) { return s.is_pinned; });
+      var unpinned = this.sessions.filter(function (s) { return !s.is_pinned; });
+      if (pinned.length) {
+        html += '<div class="oly-ai-hist-group-label" style="padding:12px 8px 4px;font-size:0.6875rem;font-weight:600;color:var(--yellow-500,#eab308);text-transform:uppercase;letter-spacing:0.05em;display:flex;align-items:center;gap:4px;">' +
+          '<svg width="10" height="10" viewBox="0 0 24 24" fill="var(--yellow-500,#eab308)" stroke="var(--yellow-500,#eab308)" stroke-width="2"><path d="M12 2l1.09 3.26L16 6l-2 2.5L14.5 12 12 10.5 9.5 12 10 8.5 8 6l2.91-.74L12 2z"/></svg>' +
+          __("Pinned") + '</div>';
+        pinned.forEach(function (s) { html += me._build_hist_item(s); });
+      }
+      var groups = this._group_sessions(unpinned);
       groups.forEach(function (g) {
         html += '<div class="oly-ai-hist-group-label" style="padding:12px 8px 4px;font-size:0.6875rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;">' + g.label + '</div>';
-        g.items.forEach(function (s) {
-          var activeBg = me.session === s.name ? 'background:var(--control-bg);' : '';
-          var is_mine = s.is_owner !== false;
-          html += '<div class="oly-ai-hist-item" data-name="' + s.name + '" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;' + activeBg + '">' +
-            '<span class="oly-ai-hist-item-title" style="flex:1;font-size:0.8125rem;color:var(--text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px;">' + frappe.utils.escape_html(s.title || __("Untitled"));
-          if (is_mine && s.shared_count) {
-            html += '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" style="flex-shrink:0;opacity:0.7;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
-          }
-          if (!is_mine && s.owner_name) {
-            html += '<span style="font-size:0.6rem;color:var(--text-muted);background:var(--control-bg);border-radius:4px;padding:1px 5px;margin-left:4px;">' + frappe.utils.escape_html(s.owner_name) + '</span>';
-          }
-          html += '</span>' +
-            '<span class="oly-ai-hist-item-acts" style="display:flex;align-items:center;opacity:0;transition:opacity 0.15s;">';
-          if (is_mine) {
-            html += '<button class="oly-ai-hist-act" data-act="share" data-name="' + s.name + '" title="' + __("Share") + '"' +
-              ' style="background:none;border:none;padding:4px;border-radius:4px;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;">' +
-              '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>';
-            html += '<button class="oly-ai-hist-act" data-act="delete" data-name="' + s.name + '" title="' + __("Delete") + '"' +
-              ' style="background:none;border:none;padding:4px;border-radius:4px;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;">' + ICON.trash + '</button>';
-          }
-          html += '</span>' +
-          '</div>';
-        });
+        g.items.forEach(function (s) { html += me._build_hist_item(s); });
       });
       html += '</div>';
     }
@@ -477,12 +474,57 @@ oly_ai.Panel = class {
       e.stopPropagation();
       me._show_share_dialog($(this).data('name'));
     });
+    this.$history.find('[data-act="pin"]').on('click', function (e) {
+      e.stopPropagation();
+      var sn = $(this).data('name');
+      frappe.xcall('oly_ai.api.chat.pin_session', { session_name: sn }).then(function (r) {
+        frappe.show_alert({ message: r.is_pinned ? __("Pinned") : __("Unpinned"), indicator: "green" });
+        me._load_sessions(function () { me._render_history(); });
+      });
+    });
+    // Deep search: local filter + API search for messages
+    var _hist_search_timer = null;
     this.$history.find('.oly-ai-hist-search').on('input', function () {
-      var q = $(this).val().toLowerCase();
+      var q = $(this).val().trim();
+      clearTimeout(_hist_search_timer);
+      me.$history.find('.oly-ai-hist-search-results').remove();
+      if (!q) {
+        me.$history.find('.oly-ai-hist-item').show();
+        me.$history.find('.oly-ai-hist-group-label').show();
+        return;
+      }
+      // Local title filter
       me.$history.find('.oly-ai-hist-item').each(function () {
         var t = $(this).find('.oly-ai-hist-item-title').text().toLowerCase();
-        $(this).toggle(t.indexOf(q) > -1);
+        $(this).toggle(t.indexOf(q.toLowerCase()) > -1);
       });
+      // Deep message search (debounced)
+      if (q.length >= 3) {
+        _hist_search_timer = setTimeout(function () {
+          frappe.xcall('oly_ai.api.chat.search_messages', { query: q, limit: 10 }).then(function (results) {
+            me.$history.find('.oly-ai-hist-search-results').remove();
+            if (!results || !results.length) return;
+            var rh = '<div class="oly-ai-hist-search-results" style="padding:4px 8px;">' +
+              '<div style="font-size:0.6875rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;padding:8px 4px 4px;">' + __("Message matches") + '</div>';
+            results.forEach(function (r) {
+              var preview = frappe.utils.escape_html(r.content_preview || '');
+              var re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+              preview = preview.replace(re, '<mark style="background:var(--yellow-highlight-color,#fff3cd);padding:0 1px;border-radius:2px;">$1</mark>');
+              rh += '<div class="oly-ai-hist-search-hit" data-name="' + r.session_name + '" style="padding:6px 8px;border-radius:6px;cursor:pointer;margin-bottom:2px;border:1px solid var(--border-color);background:var(--control-bg);">' +
+                '<div style="font-size:0.75rem;font-weight:600;color:var(--heading-color);margin-bottom:2px;">' + frappe.utils.escape_html(r.session_title || __("Untitled")) + '</div>' +
+                '<div style="font-size:0.6rem;color:var(--text-muted);text-transform:uppercase;margin-bottom:1px;">' + frappe.utils.escape_html(r.role || '') + '</div>' +
+                '<div style="font-size:0.7rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + preview + '</div>' +
+              '</div>';
+            });
+            rh += '</div>';
+            me.$history.find('.oly-ai-hist-list').after(rh);
+            me.$history.find('.oly-ai-hist-search-hit').on('click', function () {
+              me._open_session($(this).data('name'));
+              me._show_chat_view();
+            });
+          });
+        }, 400);
+      }
     });
   }
 
@@ -572,6 +614,36 @@ oly_ai.Panel = class {
     return Object.values(groups);
   }
 
+  _build_hist_item(s) {
+    var me = this;
+    var activeBg = me.session === s.name ? 'background:var(--control-bg);' : '';
+    var is_mine = s.is_owner !== false;
+    var pin_fill = s.is_pinned ? 'var(--yellow-500,#eab308)' : 'none';
+    var pin_stroke = s.is_pinned ? 'var(--yellow-500,#eab308)' : 'var(--text-muted)';
+    var html = '<div class="oly-ai-hist-item" data-name="' + s.name + '" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;' + activeBg + '">' +
+      '<span class="oly-ai-hist-item-title" style="flex:1;font-size:0.8125rem;color:var(--text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px;">' + frappe.utils.escape_html(s.title || __("Untitled"));
+    if (is_mine && s.shared_count) {
+      html += '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" style="flex-shrink:0;opacity:0.7;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
+    }
+    if (!is_mine && s.owner_name) {
+      html += '<span style="font-size:0.6rem;color:var(--text-muted);background:var(--control-bg);border-radius:4px;padding:1px 5px;margin-left:4px;">' + frappe.utils.escape_html(s.owner_name) + '</span>';
+    }
+    html += '</span>' +
+      '<span class="oly-ai-hist-item-acts" style="display:flex;align-items:center;opacity:0;transition:opacity 0.15s;">' +
+      '<button class="oly-ai-hist-act" data-act="pin" data-name="' + s.name + '" title="' + (s.is_pinned ? __("Unpin") : __("Pin")) + '"' +
+        ' style="background:none;border:none;padding:4px;border-radius:4px;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + pin_fill + '" stroke="' + pin_stroke + '" stroke-width="2"><path d="M12 2l1.09 3.26L16 6l-2 2.5L14.5 12 12 10.5 9.5 12 10 8.5 8 6l2.91-.74L12 2z"/></svg></button>';
+    if (is_mine) {
+      html += '<button class="oly-ai-hist-act" data-act="share" data-name="' + s.name + '" title="' + __("Share") + '"' +
+        ' style="background:none;border:none;padding:4px;border-radius:4px;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>';
+      html += '<button class="oly-ai-hist-act" data-act="delete" data-name="' + s.name + '" title="' + __("Delete") + '"' +
+        ' style="background:none;border:none;padding:4px;border-radius:4px;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;">' + ICON.trash + '</button>';
+    }
+    html += '</span></div>';
+    return html;
+  }
+
   // ── Show/Hide ──
   show_chat_widget() {
     this.is_open = true;
@@ -617,6 +689,7 @@ oly_ai.Panel = class {
       else me._show_chat_view();
     });
     this.$panel.find('[data-action="new"]').on('click', function () { me.new_chat(); });
+    this.$panel.find('[data-action="export"]').on('click', function () { me._export_chat(); });
 
     // Mode selector (dropdown)
     this.$panel.find('#panel-mode-sel').on('change', function () {
@@ -935,6 +1008,15 @@ oly_ai.Panel = class {
             else me._ai_msg_full(m.content || '', m);
           });
           me._scroll();
+          // Auto-switch model to match session's last used model
+          var last_model = null;
+          for (var mi = msgs.length - 1; mi >= 0; mi--) {
+            if (msgs[mi].model) { last_model = msgs[mi].model; break; }
+          }
+          if (last_model && me.$model.find('option[value="' + last_model + '"]').length) {
+            me.$model.val(last_model);
+            me.current_model = last_model;
+          }
         } catch (err) {
           me.$body.html('<div class="oly-ai-msg-error" style="margin:20px;cursor:pointer;">' + __("Error loading. Click to retry.") + '</div>');
           me.$body.one('click', function () { me._open_session(name); });
@@ -955,6 +1037,36 @@ oly_ai.Panel = class {
         me._load_sessions(function () { me._render_history(); });
       });
     });
+  }
+
+  _export_chat() {
+    if (!this.session) { frappe.show_alert({ message: __("No active chat"), indicator: "yellow" }); return; }
+    var s = this.sessions.find(function (x) { return x.name === this.session; }.bind(this));
+    var title = (s && s.title) || __("Chat");
+    var lines = ["# " + title, ""];
+    this.$body.find('.oly-ai-user-msg, .oly-ai-md-wrap').each(function () {
+      var $el = $(this);
+      if ($el.hasClass('oly-ai-user-msg')) {
+        lines.push("## User\n");
+        lines.push($el.text().trim());
+        lines.push("");
+      } else {
+        lines.push("## Assistant\n");
+        lines.push($el.text().trim());
+        lines.push("");
+      }
+    });
+    var md = lines.join("\n");
+    var blob = new Blob([md], { type: "text/markdown" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = title.replace(/[^a-zA-Z0-9 _-]/g, "").substring(0, 60) + ".md";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    frappe.show_alert({ message: __("Chat exported"), indicator: "green" });
   }
 
   // ── Sending State ──

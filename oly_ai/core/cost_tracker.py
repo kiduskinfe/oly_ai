@@ -77,10 +77,55 @@ def track_usage(model, tokens_input, tokens_output, user=None):
 		requests_today = (settings.requests_today or 0) + 1
 		frappe.db.set_single_value("AI Settings", "current_month_spend", current_spend)
 		frappe.db.set_single_value("AI Settings", "requests_today", requests_today)
+
+		# Budget warning notification
+		_check_budget_warning(settings, current_spend)
 	except Exception:
 		pass  # Non-critical — don't block AI calls for counter updates
 
 	return cost
+
+
+def _check_budget_warning(settings, current_spend):
+	"""Send a one-time notification to admins when spend crosses the warning threshold."""
+	try:
+		warning_pct = int(settings.budget_warning_pct or 0)
+		budget = flt(settings.monthly_budget_usd)
+		if not warning_pct or not budget or budget <= 0:
+			return
+
+		threshold = budget * warning_pct / 100
+		# Only fire once per month — check if we just crossed the threshold
+		previous_spend = current_spend - flt(settings.current_month_spend)
+		if current_spend >= threshold and (previous_spend < threshold or previous_spend == 0):
+			# Notify all System Managers
+			admins = frappe.get_all(
+				"Has Role",
+				filters={"role": "System Manager", "parenttype": "User"},
+				pluck="parent",
+			)
+			admins = list(set(admins))
+
+			for admin in admins:
+				if not frappe.db.exists("User", {"name": admin, "enabled": 1}):
+					continue
+				try:
+					notification = frappe.new_doc("Notification Log")
+					notification.for_user = admin
+					notification.type = "Alert"
+					notification.subject = f"AI Budget Warning: {warning_pct}% spent (${current_spend:.2f} of ${budget:.2f})"
+					notification.email_content = (
+						f"<p>Your AI monthly budget has reached <strong>{warning_pct}%</strong>.</p>"
+						f"<p>Current spend: <strong>${current_spend:.2f}</strong> of <strong>${budget:.2f}</strong> budget.</p>"
+						f"<p>Consider reviewing usage in <a href='/app/ai-settings'>AI Settings</a> "
+						f"or the <a href='/app/ai-usage-dashboard'>Usage Dashboard</a>.</p>"
+					)
+					notification.flags.ignore_permissions = True
+					notification.insert()
+				except Exception:
+					pass  # Best-effort notification
+	except Exception:
+		pass  # Never block for notification failures
 
 
 def get_current_month_spend():

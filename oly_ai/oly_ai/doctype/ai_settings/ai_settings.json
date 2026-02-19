@@ -36,6 +36,7 @@
   "budget_section",
   "monthly_budget_usd",
   "daily_request_limit",
+  "budget_warning_pct",
   "column_break_budget",
   "current_month_spend",
   "requests_today",
@@ -251,6 +252,13 @@
    "label": "Daily Request Limit per User",
    "default": 100,
    "description": "Max AI requests per user per day. 0 = unlimited."
+  },
+  {
+   "default": "80",
+   "fieldname": "budget_warning_pct",
+   "fieldtype": "Int",
+   "label": "Budget Warning Threshold (%)",
+   "description": "Send notification to admins when monthly spend reaches this % of budget. 0 = disabled."
   },
   {
    "fieldname": "column_break_budget",

@@ -7,6 +7,7 @@
  "field_order": [
   "title",
   "user",
+  "is_pinned",
   "column_break_main",
   "model",
   "total_tokens",
@@ -35,6 +36,13 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_pinned",
+   "fieldtype": "Check",
+   "label": "Pinned",
+   "in_list_view": 1
   },
   {
    "fieldname": "column_break_main",
@@ -98,7 +106,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-02-16 00:00:00.000000",
+ "modified": "2026-02-19 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Oly AI",
  "name": "AI Chat Session",

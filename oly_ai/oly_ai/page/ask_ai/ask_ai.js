@@ -138,6 +138,23 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       '.oly-mention-item .mention-mod{font-size:0.7rem;color:var(--text-muted);}',
       '.oly-mention-tag{display:inline;color:var(--primary-color);font-weight:600;}',
       '[data-theme="dark"] .oly-mention-dropdown{background:var(--gray-800);border-color:var(--gray-600);}',
+      /* pin icon */
+      '.oly-fp-pin{color:var(--text-muted);cursor:pointer;display:flex;padding:2px;background:none;border:none;}',
+      '.oly-fp-pin:hover{color:var(--primary-color);}',
+      '.oly-fp-pin.pinned{color:var(--yellow-600);}',
+      /* keyboard shortcuts overlay */
+      '.oly-kb-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;animation:oly-msg-in 0.15s;}',
+      '.oly-kb-card{background:var(--card-bg);border-radius:16px;padding:24px 32px;max-width:420px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,0.2);}',
+      '.oly-kb-card h3{margin:0 0 16px;font-size:1.1rem;font-weight:700;color:var(--heading-color);}',
+      '.oly-kb-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:0.85rem;}',
+      '.oly-kb-key{background:var(--control-bg);border:1px solid var(--dark-border-color);border-radius:6px;padding:2px 8px;font-family:monospace;font-size:0.8rem;color:var(--text-muted);}',
+      /* message search results */
+      '.oly-fp-search-results{padding:8px;max-height:300px;overflow-y:auto;}',
+      '.oly-fp-search-result{padding:8px 10px;border-radius:8px;cursor:pointer;margin-bottom:4px;border:1px solid var(--dark-border-color);background:var(--control-bg);}',
+      '.oly-fp-search-result:hover{background:var(--bg-light-gray);border-color:var(--primary-color);}',
+      '.oly-fp-search-result .sr-title{font-size:0.75rem;font-weight:600;color:var(--heading-color);margin-bottom:2px;}',
+      '.oly-fp-search-result .sr-preview{font-size:0.7rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.oly-fp-search-result .sr-role{font-size:0.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;}',
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -423,8 +440,9 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         '</button>' +
       '</div>' +
       '<div style="padding:0 12px 8px;">' +
-        '<input type="text" id="fp-search" placeholder="' + __("Search...") + '" style="width:100%;padding:8px 12px;border:1px solid var(--dark-border-color);border-radius:8px;background:var(--control-bg);color:var(--text-color);font-size:0.8125rem;outline:none;font-family:inherit;" />' +
+        '<input type="text" id="fp-search" placeholder="' + __("Search chats & messages...") + '" style="width:100%;padding:8px 12px;border:1px solid var(--dark-border-color);border-radius:8px;background:var(--control-bg);color:var(--text-color);font-size:0.8125rem;outline:none;font-family:inherit;" />' +
       '</div>' +
+      '<div id="fp-search-results" class="oly-fp-search-results" style="display:none;"></div>' +
       '<div class="oly-fp-share-tabs" id="fp-share-tabs">' +
         '<button class="oly-fp-share-tab active" data-filter="mine">' + __("My Chats") + '</button>' +
         '<button class="oly-fp-share-tab" data-filter="shared">' + __("Shared") + '</button>' +
@@ -458,6 +476,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
             '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>' +
           '</button>' +
           '<div class="oly-fp-more-menu" id="fp-more-menu">' +
+            '<button class="oly-fp-more-item" data-act="pin" id="fp-more-pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l1.09 3.26L16 6l-2 2.5L14.5 12 12 10.5 9.5 12 10 8.5 8 6l2.91-.74L12 2z"/></svg><span class="pin-label">' + __("Pin chat") + '</span></button>' +
             '<button class="oly-fp-more-item" data-act="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>' + __("Share chat") + '</button>' +
             '<button class="oly-fp-more-item" data-act="export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' + __("Export chat") + '</button>' +
             '<button class="oly-fp-more-item" data-act="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' + __("New chat") + '</button>' +
@@ -571,35 +590,57 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       $list.html('<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:0.8125rem;">' + empty_msg + '</div>');
       return;
     }
-    var groups = group_by_date(list);
+    // Separate pinned items from the rest
+    var pinned = list.filter(function (s) { return s.is_pinned; });
+    var unpinned = list.filter(function (s) { return !s.is_pinned; });
     var html = "";
+
+    // Pinned section
+    if (pinned.length) {
+      html += '<div style="margin-bottom:4px;">';
+      html += '<div style="padding:8px 8px 4px;font-size:0.7rem;font-weight:600;color:var(--yellow-600);text-transform:uppercase;letter-spacing:0.05em;display:flex;align-items:center;gap:4px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="var(--yellow-600)" stroke="none"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>' + __("Pinned") + '</div>';
+      pinned.forEach(function (s) { html += _render_session_item(s); });
+      html += '</div>';
+    }
+
+    // Regular groups
+    var groups = group_by_date(unpinned);
     groups.forEach(function (g) {
       html += '<div style="margin-bottom:4px;">';
       html += '<div style="padding:8px 8px 4px;font-size:0.7rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;">' + g.label + '</div>';
-      g.items.forEach(function (s) {
-        var active = current_session === s.name ? " active" : "";
-        var is_mine = s.is_owner !== false;
-        html += '<div class="oly-fp-sb-item' + active + '" data-name="' + s.name + '" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:0.8125rem;color:var(--text-color);position:relative;transition:background .12s;">';
-        html += '<span class="oly-fp-sb-item-title" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px;">' + frappe.utils.escape_html(s.title || __("Untitled"));
-        if (is_mine && s.shared_count) {
-          html += '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" style="flex-shrink:0;opacity:0.7;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
-        }
-        if (!is_mine && s.owner_name) {
-          html += '<span class="oly-fp-shared-badge">' + frappe.utils.escape_html(s.owner_name) + '</span>';
-        }
-        html += '</span>';
-        html += '<span class="oly-fp-sb-item-acts" style="display:flex;gap:2px;flex-shrink:0;">';
-        if (is_mine) {
-          html += '<button class="oly-fp-sb-act" data-act="share" data-name="' + s.name + '" title="' + __("Share") + '" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;display:flex;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>';
-          html += '<button class="oly-fp-sb-act" data-act="edit" data-name="' + s.name + '" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;display:flex;">' + I.edit + '</button>';
-          html += '<button class="oly-fp-sb-act" data-act="delete" data-name="' + s.name + '" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;display:flex;">' + I.trash + '</button>';
-        }
-        html += '</span>';
-        html += '</div>';
-      });
+      g.items.forEach(function (s) { html += _render_session_item(s); });
       html += '</div>';
     });
     $list.html(html);
+    _bind_session_events();
+  }
+
+  function _render_session_item(s) {
+    var active = current_session === s.name ? " active" : "";
+    var is_mine = s.is_owner !== false;
+    var pin_svg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + (s.is_pinned ? 'var(--yellow-600)' : 'none') + '" stroke="currentColor" stroke-width="2"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>';
+    var html = '<div class="oly-fp-sb-item' + active + '" data-name="' + s.name + '" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:0.8125rem;color:var(--text-color);position:relative;transition:background .12s;">';
+    html += '<span class="oly-fp-sb-item-title" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px;">' + frappe.utils.escape_html(s.title || __("Untitled"));
+    if (is_mine && s.shared_count) {
+      html += '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" style="flex-shrink:0;opacity:0.7;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
+    }
+    if (!is_mine && s.owner_name) {
+      html += '<span class="oly-fp-shared-badge">' + frappe.utils.escape_html(s.owner_name) + '</span>';
+    }
+    html += '</span>';
+    html += '<span class="oly-fp-sb-item-acts" style="display:flex;gap:2px;flex-shrink:0;">';
+    html += '<button class="oly-fp-sb-act oly-fp-pin' + (s.is_pinned ? ' pinned' : '') + '" data-act="pin" data-name="' + s.name + '" title="' + (s.is_pinned ? __("Unpin") : __("Pin")) + '" style="background:none;border:none;cursor:pointer;padding:2px;display:flex;">' + pin_svg + '</button>';
+    if (is_mine) {
+      html += '<button class="oly-fp-sb-act" data-act="share" data-name="' + s.name + '" title="' + __("Share") + '" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;display:flex;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>';
+      html += '<button class="oly-fp-sb-act" data-act="edit" data-name="' + s.name + '" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;display:flex;">' + I.edit + '</button>';
+      html += '<button class="oly-fp-sb-act" data-act="delete" data-name="' + s.name + '" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;display:flex;">' + I.trash + '</button>';
+    }
+    html += '</span>';
+    html += '</div>';
+    return html;
+  }
+
+  function _bind_session_events() {
     $list.find(".oly-fp-sb-item").on("click", function (e) {
       if ($(e.target).closest(".oly-fp-sb-act").length) return;
       open_session($(this).data("name"));
@@ -612,6 +653,14 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     });
     $list.find('[data-act="share"]').on("click", function (e) {
       e.stopPropagation(); show_share_dialog($(this).data("name"));
+    });
+    $list.find('[data-act="pin"]').on("click", function (e) {
+      e.stopPropagation();
+      var name = $(this).data("name");
+      frappe.xcall("oly_ai.api.chat.pin_session", { session_name: name }).then(function (r) {
+        frappe.show_alert({ message: r.is_pinned ? __("Chat pinned") : __("Chat unpinned"), indicator: "green" });
+        load_sessions();
+      });
     });
   }
 
@@ -678,6 +727,15 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
             else append_ai_msg(m.content || "", m);
           });
           scroll_bottom();
+          // Auto-switch model to match the session's last used model
+          var last_model = null;
+          for (var mi = msgs.length - 1; mi >= 0; mi--) {
+            if (msgs[mi].model) { last_model = msgs[mi].model; break; }
+          }
+          if (last_model && $model.find('option[value="' + last_model + '"]').length) {
+            $model.val(last_model);
+            current_model = last_model;
+          }
         } catch (renderErr) {
           console.error("[Ask AI] Render error:", renderErr);
           $msgs.html(
@@ -1387,10 +1445,55 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 150) + "px";
   }
+  var _search_timer = null;
   $("#fp-search").on("input", function () {
-    var q = $(this).val().toLowerCase();
-    if (!q) { render_sessions(sessions); return; }
-    render_sessions(sessions.filter(function (s) { return (s.title || "").toLowerCase().indexOf(q) > -1; }));
+    var q = $(this).val().trim();
+    clearTimeout(_search_timer);
+    if (!q) {
+      $("#fp-search-results").hide().empty();
+      $("#fp-list, #fp-share-tabs").show();
+      render_sessions(sessions);
+      return;
+    }
+    // Instant: filter titles locally
+    render_sessions(sessions.filter(function (s) { return (s.title || "").toLowerCase().indexOf(q.toLowerCase()) > -1; }));
+    // Deep search if query >= 3 chars, debounced 400ms
+    if (q.length >= 3) {
+      _search_timer = setTimeout(function () {
+        frappe.xcall("oly_ai.api.chat.search_messages", { query: q, limit: 15 }).then(function (results) {
+          if (!results || !results.length) {
+            $("#fp-search-results").hide().empty();
+            return;
+          }
+          var html = '<div style="padding:4px 8px 2px;font-size:0.7rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">' + __("Message matches") + '</div>';
+          results.forEach(function (r) {
+            var preview = frappe.utils.escape_html(r.content_preview || "");
+            // Highlight the query in preview
+            var re = new RegExp("(" + q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "gi");
+            preview = preview.replace(re, '<mark style="background:var(--yellow-highlight-color,#fff3cd);padding:0 1px;border-radius:2px;">$1</mark>');
+            html += '<div class="oly-fp-search-result" data-session="' + r.session_name + '">' +
+              '<div class="sr-title">' + frappe.utils.escape_html(r.session_title || __("Untitled")) + '</div>' +
+              '<div class="sr-role">' + frappe.utils.escape_html(r.role || "") + '</div>' +
+              '<div class="sr-preview">' + preview + '</div>' +
+            '</div>';
+          });
+          $("#fp-search-results").html(html).show();
+          $("#fp-share-tabs").hide();
+          // Click to open session
+          $("#fp-search-results").off("click", ".oly-fp-search-result").on("click", ".oly-fp-search-result", function () {
+            var sn = $(this).data("session");
+            if (sn) {
+              open_session(sn);
+              $("#fp-search").val("");
+              $("#fp-search-results").hide().empty();
+              $("#fp-list, #fp-share-tabs").show();
+            }
+          });
+        });
+      }, 400);
+    } else {
+      $("#fp-search-results").hide().empty();
+    }
   });
   // Share filter tabs
   $("#fp-share-tabs").on("click", ".oly-fp-share-tab", function () {
@@ -1570,6 +1673,10 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   $more_btn.on("click", function (e) {
     e.preventDefault();
     e.stopPropagation();
+    // Update pin label based on current session state
+    var cs = sessions.find(function (x) { return x.name === current_session; });
+    var is_p = cs && cs.is_pinned;
+    $("#fp-more-pin .pin-label").text(is_p ? __("Unpin chat") : __("Pin chat"));
     $more_menu.toggleClass("show");
   });
 
@@ -1578,7 +1685,16 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     var act = $(this).data("act");
     $more_menu.removeClass("show");
 
-    if (act === "share") {
+    if (act === "pin") {
+      if (current_session) {
+        frappe.xcall("oly_ai.api.chat.pin_session", { session_name: current_session }).then(function (r) {
+          frappe.show_alert({ message: r.is_pinned ? __("Chat pinned") : __("Chat unpinned"), indicator: "green" });
+          load_sessions();
+        });
+      } else {
+        frappe.show_alert({ message: __("Start a chat first"), indicator: "yellow" });
+      }
+    } else if (act === "share") {
       if (current_session) {
         show_share_dialog(current_session);
       } else {
@@ -1604,10 +1720,29 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
 
   // ── Keyboard shortcuts ──
   $(document).on("keydown.oly_ai_page", function (e) {
+    var tag = (e.target.tagName || "").toLowerCase();
+    var in_input = (tag === "input" || tag === "textarea" || e.target.isContentEditable);
+    // ? — show keyboard shortcuts overlay (only when not typing)
+    if (!in_input && e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      _toggle_kb_overlay();
+      return;
+    }
+    // Escape — close keyboard overlay if open
+    if (e.key === "Escape" && $(".oly-kb-overlay").is(":visible")) {
+      $(".oly-kb-overlay").fadeOut(120);
+      return;
+    }
     // Ctrl+/ or Cmd+/ — focus the input
     if ((e.ctrlKey || e.metaKey) && e.key === "/") {
       e.preventDefault();
       $input.focus();
+    }
+    // Ctrl+K or Cmd+K — focus search
+    if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K") && !e.shiftKey) {
+      e.preventDefault();
+      if (!sidebar_open) { sidebar_open = true; $fp.removeClass("fp-sidebar-closed"); }
+      $("#fp-search").focus();
     }
     // Ctrl+Shift+N or Cmd+Shift+N — new chat
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "N" || e.key === "n")) {
@@ -1626,6 +1761,42 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       $fp.toggleClass("fp-sidebar-closed", !sidebar_open);
     }
   });
+
+  function _toggle_kb_overlay() {
+    var $ov = $(".oly-kb-overlay");
+    if ($ov.length && $ov.is(":visible")) { $ov.fadeOut(120); return; }
+    if ($ov.length) { $ov.fadeIn(120); return; }
+    var shortcuts = [
+      ["Ctrl + /", __("Focus message input")],
+      ["Ctrl + K", __("Focus search")],
+      ["Ctrl + Shift + N", __("New chat")],
+      ["Ctrl + Shift + E", __("Export chat")],
+      ["Ctrl + B", __("Toggle sidebar")],
+      ["?", __("Show this help")],
+      ["Esc", __("Close dialogs & overlays")]
+    ];
+    var rows = "";
+    shortcuts.forEach(function (s) {
+      var keys = s[0].split(" + ").map(function (k) { return '<kbd class="oly-kb-key">' + k + '</kbd>'; }).join('<span style="color:var(--text-muted);font-size:0.7rem;">+</span>');
+      rows += '<div class="oly-kb-row"><span>' + s[1] + '</span><span style="display:flex;align-items:center;gap:4px;">' + keys + '</span></div>';
+    });
+    var html = '<div class="oly-kb-overlay" style="display:none;">' +
+      '<div class="oly-kb-card">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+          '<span style="font-weight:700;font-size:0.95rem;color:var(--heading-color);">' + __("Keyboard Shortcuts") + '</span>' +
+          '<button class="oly-kb-close" style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:1.2rem;padding:2px 6px;">&times;</button>' +
+        '</div>' +
+        rows +
+      '</div>' +
+    '</div>';
+    $("body").append(html);
+    $(".oly-kb-overlay").fadeIn(120);
+    $(".oly-kb-overlay").on("click", function (ev) {
+      if ($(ev.target).hasClass("oly-kb-overlay") || $(ev.target).hasClass("oly-kb-close")) {
+        $(".oly-kb-overlay").fadeOut(120);
+      }
+    });
+  }
 
   // Respond to Toggle Full Width in real-time — re-align with navbar container
   function align_with_navbar() {

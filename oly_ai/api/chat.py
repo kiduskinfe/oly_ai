@@ -264,8 +264,8 @@ def get_sessions(search=None, limit=50, offset=0, filter_type=None):
 	sessions = frappe.get_all(
 		"AI Chat Session",
 		filters=filters,
-		fields=["name", "title", "modified", "creation", "user"],
-		order_by="modified desc",
+		fields=["name", "title", "modified", "creation", "user", "is_pinned"],
+		order_by="is_pinned desc, modified desc",
 		limit_page_length=int(limit),
 		start=int(offset),
 	)
@@ -706,6 +706,91 @@ def delete_session(session_name):
 	frappe.delete_doc("AI Chat Session", session_name, force=True, ignore_permissions=True)
 	frappe.db.commit()
 	return {"success": True}
+
+
+@frappe.whitelist()
+def pin_session(session_name):
+	"""Pin or unpin a chat session (toggle).
+
+	Returns:
+		dict: {"is_pinned": bool}
+	"""
+	user = frappe.session.user
+	session_user = frappe.db.get_value("AI Chat Session", session_name, "user")
+	if not session_user:
+		frappe.throw(_("Chat session not found"))
+	if session_user != user and user != "Administrator":
+		if not _is_shared_with(session_name, user):
+			frappe.throw(_("Access denied"))
+
+	current = frappe.db.get_value("AI Chat Session", session_name, "is_pinned") or 0
+	new_val = 0 if current else 1
+	frappe.db.set_value("AI Chat Session", session_name, "is_pinned", new_val)
+	frappe.db.commit()
+	return {"is_pinned": bool(new_val)}
+
+
+@frappe.whitelist()
+def search_messages(query, limit=20):
+	"""Search across all user's chat messages.
+
+	Args:
+		query: Search string
+		limit: Max results (default 20)
+
+	Returns:
+		list: [{"session_name", "session_title", "role", "content_preview", "creation"}]
+	"""
+	user = frappe.session.user
+	if not query or len(query.strip()) < 2:
+		return []
+
+	q = f"%{query.strip()}%"
+
+	# Get sessions the user owns or has access to
+	shared_names = frappe.db.sql(
+		"""SELECT parent FROM `tabAI Chat Shared User`
+		WHERE user=%s AND parenttype='AI Chat Session'""",
+		user, as_list=True,
+	)
+	shared_names = [r[0] for r in shared_names]
+
+	if shared_names:
+		results = frappe.db.sql(
+			"""SELECT m.parent as session_name, s.title as session_title,
+			          m.role, m.content, m.creation
+			FROM `tabAI Chat Message` m
+			JOIN `tabAI Chat Session` s ON s.name = m.parent
+			WHERE (s.user = %s OR m.parent IN %s)
+			AND m.content LIKE %s
+			ORDER BY m.creation DESC
+			LIMIT %s""",
+			(user, shared_names, q, int(limit)),
+			as_dict=True,
+		)
+	else:
+		results = frappe.db.sql(
+			"""SELECT m.parent as session_name, s.title as session_title,
+			          m.role, m.content, m.creation
+			FROM `tabAI Chat Message` m
+			JOIN `tabAI Chat Session` s ON s.name = m.parent
+			WHERE s.user = %s
+			AND m.content LIKE %s
+			ORDER BY m.creation DESC
+			LIMIT %s""",
+			(user, q, int(limit)),
+			as_dict=True,
+		)
+
+	# Truncate content to preview
+	for r in results:
+		if r.content and len(r.content) > 120:
+			r["content_preview"] = r.content[:120] + "..."
+		else:
+			r["content_preview"] = r.content or ""
+		del r["content"]
+
+	return results
 
 
 # ─── Image Generation ─────────────────────────────────────────
