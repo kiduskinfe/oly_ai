@@ -326,7 +326,6 @@ oly_ai.Panel = class {
         '<div style="position:relative;">' +
         '<div id="panel-mention-dropdown" style="position:absolute;bottom:100%;left:0;right:0;max-height:180px;overflow-y:auto;background:var(--card-bg);border:1px solid var(--dark-border-color);border-radius:10px;box-shadow:0 -4px 20px rgba(0,0,0,0.12);z-index:200;display:none;margin-bottom:6px;"></div>' +
         '<div class="oly-ai-input-row" style="display:flex;align-items:flex-end;gap:8px;">' +
-          '<span id="panel-attach-btn" style="display:flex;align-items:center;cursor:pointer;color:var(--text-muted);padding:4px;flex-shrink:0;" title="' + __("Attach file") + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></span>' +
           '<input type="file" id="panel-file-input" multiple accept="image/*,.pdf,.txt,.csv,.xlsx,.xls,.doc,.docx,.json,.xml,.md" style="display:none;" />' +
           '<textarea class="oly-ai-input" rows="1" placeholder="' + __("Ask anything...") + '" maxlength="4000"' +
           ' style="flex:1;margin:0;border-radius:18px;font-size:0.875rem;border:1px solid var(--dark-border-color);background:var(--control-bg);color:var(--text-color);padding:8px 14px;resize:none;min-height:36px;max-height:120px;line-height:1.4;outline:none;font-family:inherit;overflow:hidden;"></textarea>' +
@@ -335,7 +334,10 @@ oly_ai.Panel = class {
         '</div>' +
         '</div>' +
         '<div class="oly-ai-input-footer" style="display:flex;align-items:center;justify-content:space-between;padding-top:6px;">' +
-          '<select class="oly-ai-model-sel" id="panel-model-sel" style="background:var(--control-bg);border:1px solid var(--border-color);border-radius:12px;color:var(--text-muted);font-size:0.6875rem;padding:3px 10px;outline:none;cursor:pointer;max-width:160px;">' + model_opts + '</select>' +
+          '<div style="display:flex;align-items:center;gap:6px;">' +
+            '<span id="panel-attach-btn" style="display:flex;align-items:center;cursor:pointer;color:var(--text-muted);padding:2px;flex-shrink:0;" title="' + __("Attach file") + '"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></span>' +
+            '<select class="oly-ai-model-sel" id="panel-model-sel" style="background:var(--control-bg);border:1px solid var(--border-color);border-radius:12px;color:var(--text-muted);font-size:0.6875rem;padding:3px 10px;outline:none;cursor:pointer;max-width:160px;">' + model_opts + '</select>' +
+          '</div>' +
           '<span style="font-size:0.625rem;color:var(--text-muted);font-style:italic;">' + __("AI can make mistakes") + '</span>' +
         '</div>' +
       '</div>'
