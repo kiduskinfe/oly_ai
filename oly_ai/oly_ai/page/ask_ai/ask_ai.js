@@ -494,7 +494,6 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         '<div id="fp-mention-dropdown" class="oly-mention-dropdown"></div>' +
         '<div class="oly-fp-input-bar" style="display:flex;align-items:flex-end;gap:8px;border:1px solid var(--dark-border-color);border-radius:16px;padding:8px 12px;background:var(--control-bg);">' +
           '<span class="oly-fp-attach-btn" id="fp-attach" style="cursor:pointer;color:var(--text-muted);display:flex;align-items:center;padding:4px;flex-shrink:0;" title="' + __("Attach file or image") + '">' + clip_icon + '</span>' +
-          '<input type="file" id="fp-file-input" multiple accept="image/*,.pdf,.txt,.csv,.xlsx,.xls,.doc,.docx,.json,.xml,.md,.ppt,.pptx" style="display:none;" />' +
           '<textarea id="fp-input" rows="1" placeholder="' + __("Message AI...") + '" maxlength="4000" style="flex:1;border:none;background:transparent;color:var(--text-color);font-size:0.9rem;resize:none;min-height:24px;max-height:150px;line-height:1.5;outline:none;font-family:inherit;padding:4px 0;"></textarea>' +
           '<span id="fp-mic-btn" style="cursor:pointer;height:32px;width:32px;min-width:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex-shrink:0;transition:all 0.2s;" title="' + __("Voice input") + '">' + I.mic + '</span>' +
           '<span class="oly-ai-send-btn" id="fp-send" style="cursor:pointer;height:32px;width:32px;min-width:32px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + I.send + '</span>' +
@@ -1504,23 +1503,20 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     $(this).addClass("active");
     load_sessions();
   });
-  // Attach button
-  $("#fp-attach").on("click", function () { $("#fp-file-input").trigger("click"); });
-  $("#fp-file-input").on("change", function () {
-    var files = this.files;
-    if (!files || !files.length) return;
-    var promises = [];
-    for (var i = 0; i < files.length; i++) {
-      promises.push(upload_file(files[i]));
-    }
-    Promise.all(promises).then(function (uploaded) {
-      attached_files = attached_files.concat(uploaded);
-      render_attachments();
-    }).catch(function () {
-      frappe.show_alert({ message: __("Failed to upload file"), indicator: "red" });
+  // Attach button — use Frappe Upload dialog for full options
+  $("#fp-attach").on("click", function () {
+    new frappe.ui.FileUploader({
+      folder: 'Home/Attachments',
+      on_success: function (file_doc) {
+        attached_files.push({
+          name: file_doc.file_name || file_doc.name,
+          file_url: file_doc.file_url,
+          is_image: /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(file_doc.file_name || file_doc.name),
+          preview: file_doc.file_url,
+        });
+        render_attachments();
+      },
     });
-    // Reset so same file can be re-selected
-    $("#fp-file-input").val("");
   });
 
   // ── Drag & Drop support ──

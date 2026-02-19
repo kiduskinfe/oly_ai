@@ -326,7 +326,6 @@ oly_ai.Panel = class {
         '<div style="position:relative;">' +
         '<div id="panel-mention-dropdown" style="position:absolute;bottom:100%;left:0;right:0;max-height:180px;overflow-y:auto;background:var(--card-bg);border:1px solid var(--dark-border-color);border-radius:10px;box-shadow:0 -4px 20px rgba(0,0,0,0.12);z-index:200;display:none;margin-bottom:6px;"></div>' +
         '<div class="oly-ai-input-row" style="display:flex;align-items:flex-end;gap:8px;">' +
-          '<input type="file" id="panel-file-input" multiple accept="image/*,.pdf,.txt,.csv,.xlsx,.xls,.doc,.docx,.json,.xml,.md" style="display:none;" />' +
           '<textarea class="oly-ai-input" rows="1" placeholder="' + __("Ask anything...") + '" maxlength="4000"' +
           ' style="flex:1;margin:0;border-radius:18px;font-size:0.875rem;border:1px solid var(--dark-border-color);background:var(--control-bg);color:var(--text-color);padding:8px 14px;resize:none;min-height:36px;max-height:120px;line-height:1.4;outline:none;font-family:inherit;overflow:hidden;"></textarea>' +
           '<span id="panel-mic-btn" style="cursor:pointer;height:2rem;width:2rem;min-width:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex-shrink:0;transition:all 0.2s;" title="' + __("Voice input") + '">' + ICON.mic + '</span>' +
@@ -815,13 +814,19 @@ oly_ai.Panel = class {
       }
     });
 
-    // File attachment
+    // File attachment — use Frappe Upload dialog for full options
     this.$panel.find('#panel-attach-btn').on('click', function () {
-      me.$panel.find('#panel-file-input').trigger('click');
-    });
-    this.$panel.find('#panel-file-input').on('change', function () {
-      me._handle_files(this.files);
-      $(this).val('');
+      new frappe.ui.FileUploader({
+        folder: 'Home/Attachments',
+        on_success: function (file_doc) {
+          me._attached_files.push({
+            name: file_doc.file_name || file_doc.name,
+            file_url: file_doc.file_url,
+            is_image: /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file_doc.file_name || file_doc.name),
+          });
+          me._render_attach_preview();
+        },
+      });
     });
 
     $(document).on('keydown.oly_ai', function (e) {
