@@ -317,10 +317,20 @@ def _step_conditional(condition, context):
 	"""Evaluate a condition and return result."""
 	# Simple condition evaluation using context variables
 	try:
+		import ast
 		# Resolve variables in condition
 		resolved = _resolve_variables(condition, context)
-		# Basic evaluation — only allow safe expressions
-		result = bool(eval(resolved, {"__builtins__": {}}, context))
+		# Safe evaluation using ast.literal_eval for simple expressions,
+		# or compile + restricted eval for comparisons
+		node = ast.parse(resolved, mode="eval")
+		# Only allow safe node types (no calls, imports, attribute access)
+		for child in ast.walk(node):
+			if isinstance(child, (ast.Call, ast.Import, ast.ImportFrom,
+					ast.Attribute, ast.Lambda, ast.ListComp, ast.SetComp,
+					ast.DictComp, ast.GeneratorExp)):
+				return f"Condition contains disallowed expression: {type(child).__name__}"
+		code = compile(node, "<condition>", "eval")
+		result = bool(eval(code, {"__builtins__": {}}, context))
 		return f"Condition evaluated to: {result}"
 	except Exception as e:
 		return f"Condition evaluation failed: {e}"

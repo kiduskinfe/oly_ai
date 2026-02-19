@@ -146,25 +146,25 @@ def send_daily_digest():
 	yesterday = add_days(now_datetime(), -1).strftime("%Y-%m-%d")
 
 	# Gather stats
-	total_requests = frappe.db.count("AI Audit Log", {"date": yesterday}) or 0
+	total_requests = frappe.db.count("AI Audit Log", {"creation": ["between", [f"{yesterday} 00:00:00", f"{yesterday} 23:59:59"]]}) or 0
 	if total_requests == 0:
 		return  # No activity, skip digest
 
 	total_cost = frappe.db.sql(
-		"SELECT COALESCE(SUM(cost), 0) FROM `tabAI Audit Log` WHERE date = %s",
+		"SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM `tabAI Audit Log` WHERE DATE(creation) = %s",
 		yesterday,
 	)[0][0] or 0
 
 	error_count = frappe.db.count("AI Audit Log", {
-		"date": yesterday,
+		"creation": ["between", [f"{yesterday} 00:00:00", f"{yesterday} 23:59:59"]],
 		"status": "Error",
 	}) or 0
 
 	# Top users
 	top_users = frappe.db.sql("""
-		SELECT user, COUNT(*) as cnt, SUM(cost) as total_cost
+		SELECT user, COUNT(*) as cnt, SUM(estimated_cost_usd) as total_cost
 		FROM `tabAI Audit Log`
-		WHERE date = %s
+		WHERE DATE(creation) = %s
 		GROUP BY user
 		ORDER BY cnt DESC
 		LIMIT 5

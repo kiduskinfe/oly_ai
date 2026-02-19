@@ -19,7 +19,7 @@ def voice_to_text(audio_file=None):
 	Returns:
 		dict: {"text": str, "language": str}
 	"""
-	frappe.only_for("System Manager", "All")
+	frappe.only_for(["System Manager", "All"])
 
 	settings = frappe.get_cached_doc("AI Settings")
 	api_key = settings.get_password("api_key")
@@ -86,7 +86,7 @@ def text_to_speech(text, voice="alloy"):
 	Returns:
 		dict: {"audio_base64": str, "content_type": "audio/mpeg"}
 	"""
-	frappe.only_for("System Manager", "All")
+	frappe.only_for(["System Manager", "All"])
 
 	if not text or not text.strip():
 		frappe.throw(_("No text provided"))
