@@ -484,6 +484,19 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 	except Exception:
 		pass
 
+	# @ Mention context — inject doctype schemas if user referenced @DocType
+	try:
+		mentioned_doctypes = _extract_doctype_mentions(message)
+		if mentioned_doctypes:
+			doctype_ctx = _build_doctype_context(mentioned_doctypes)
+			if doctype_ctx:
+				llm_messages.append({
+					"role": "system",
+					"content": doctype_ctx,
+				})
+	except Exception:
+		pass
+
 	llm_messages.extend(conversation)
 
 	# Resolve file uploads for vision
@@ -1196,3 +1209,127 @@ def get_shared_users(session_name):
 		as_dict=True,
 	)
 	return rows
+
+
+# ─── @ Mention Context — DocType Schema Injection ────
+
+
+@frappe.whitelist()
+def get_doctype_suggestions(query=""):
+	"""Search for DocTypes matching a query string, for @mention autocomplete.
+
+	Args:
+		query: partial doctype name to search
+
+	Returns:
+		list: [{"name": "Sales Invoice", "module": "Accounts"}, ...]
+	"""
+	query = (query or "").strip()
+	if len(query) < 1:
+		return []
+
+	results = frappe.get_all(
+		"DocType",
+		filters={
+			"name": ["like", f"%{query}%"],
+			"istable": 0,
+			"issingle": 0,
+		},
+		fields=["name", "module"],
+		order_by="name asc",
+		limit_page_length=15,
+	)
+	return results
+
+
+def _build_doctype_context(doctype_names):
+	"""Build a schema context string for the given doctype names.
+
+	Returns a formatted string describing the fields of each doctype,
+	suitable for injection into the system prompt.
+	"""
+	if not doctype_names:
+		return ""
+
+	parts = []
+	for dt_name in doctype_names[:5]:  # max 5 doctypes to avoid token bloat
+		if not frappe.db.exists("DocType", dt_name):
+			continue
+		meta = frappe.get_meta(dt_name)
+		fields_info = []
+		for f in meta.fields:
+			if f.fieldtype in ("Section Break", "Column Break", "Tab Break", "HTML", "Fold"):
+				continue
+			info = f"{f.fieldname} ({f.fieldtype}"
+			if f.options:
+				info += f", options={f.options}"
+			if f.reqd:
+				info += ", required"
+			info += ")"
+			if f.label:
+				info = f"{f.label}: {info}"
+			fields_info.append(info)
+
+		# Include child tables
+		child_tables = []
+		for f in meta.fields:
+			if f.fieldtype == "Table" and f.options:
+				child_meta = frappe.get_meta(f.options)
+				child_fields = []
+				for cf in child_meta.fields:
+					if cf.fieldtype in ("Section Break", "Column Break", "Tab Break", "HTML", "Fold"):
+						continue
+					ci = f"{cf.fieldname} ({cf.fieldtype}"
+					if cf.options:
+						ci += f", options={cf.options}"
+					ci += ")"
+					if cf.label:
+						ci = f"{cf.label}: {ci}"
+					child_fields.append(ci)
+				child_tables.append(f"  Child Table '{f.options}' (via field '{f.fieldname}'):\n    " + "\n    ".join(child_fields[:30]))
+
+		dt_section = f"### {dt_name} (module: {meta.module})\n"
+		dt_section += f"Fields:\n  " + "\n  ".join(fields_info[:50])
+		if child_tables:
+			dt_section += "\n\n" + "\n\n".join(child_tables)
+
+		# Record count for context
+		try:
+			count = frappe.db.count(dt_name)
+			dt_section += f"\n\nTotal records: {count}"
+		except Exception:
+			pass
+
+		parts.append(dt_section)
+
+	if not parts:
+		return ""
+
+	return "The user referenced these ERPNext DocTypes. Use their exact field names and structure in your response:\n\n" + "\n\n---\n\n".join(parts)
+
+
+def _extract_doctype_mentions(message):
+	"""Extract @DocType mentions from a message string.
+
+	Supports: @Sales Invoice, @Employee, @"Sales Invoice", @`Sales Invoice`
+
+	Returns:
+		list: unique doctype names found
+	"""
+	# Match @"Doctype Name" or @`Doctype Name` or @SingleWord or @Multi Word (up to 4 words of Title Case)
+	mentions = set()
+
+	# Quoted mentions: @"Sales Invoice" or @`Sales Invoice`
+	for m in re.finditer(r'@["`]([^"`]+)["`]', message):
+		mentions.add(m.group(1).strip())
+
+	# Unquoted mentions: @Employee or @Sales Invoice (Title Case words)
+	for m in re.finditer(r'@([A-Z][a-z]+(?:\s[A-Z][a-z]+){0,4})\b', message):
+		mentions.add(m.group(1).strip())
+
+	# Validate against actual doctypes
+	valid = []
+	for name in mentions:
+		if frappe.db.exists("DocType", name):
+			valid.append(name)
+	return valid

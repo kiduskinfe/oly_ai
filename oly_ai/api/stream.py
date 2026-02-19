@@ -186,6 +186,20 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 		except Exception:
 			llm_messages.extend(conversation)
 
+		# @ Mention context — inject doctype schemas if user referenced @DocType
+		try:
+			from oly_ai.api.chat import _extract_doctype_mentions, _build_doctype_context
+			mentioned_doctypes = _extract_doctype_mentions(message)
+			if mentioned_doctypes:
+				doctype_ctx = _build_doctype_context(mentioned_doctypes)
+				if doctype_ctx:
+					llm_messages.append({
+						"role": "system",
+						"content": doctype_ctx,
+					})
+		except Exception:
+			pass
+
 		# Handle file uploads for vision
 		if file_urls:
 			try:

@@ -282,6 +282,8 @@ oly_ai.Panel = class {
     this.$container.append(
       '<div class="oly-ai-input-area" style="padding:8px 12px 10px;border-top:1px solid var(--dark-border-color);flex-shrink:0;">' +
         '<div id="panel-attach-preview" style="display:flex;flex-wrap:wrap;gap:6px;padding:0 0 6px;"></div>' +
+        '<div style="position:relative;">' +
+        '<div id="panel-mention-dropdown" style="position:absolute;bottom:100%;left:0;right:0;max-height:180px;overflow-y:auto;background:var(--card-bg);border:1px solid var(--dark-border-color);border-radius:10px;box-shadow:0 -4px 20px rgba(0,0,0,0.12);z-index:200;display:none;margin-bottom:6px;"></div>' +
         '<div class="oly-ai-input-row" style="display:flex;align-items:flex-end;gap:8px;">' +
           '<span id="panel-attach-btn" style="display:flex;align-items:center;cursor:pointer;color:var(--text-muted);padding:4px;flex-shrink:0;" title="' + __("Attach file") + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></span>' +
           '<input type="file" id="panel-file-input" multiple accept="image/*,.pdf,.txt,.csv,.xlsx,.xls,.doc,.docx,.json,.xml,.md" style="display:none;" />' +
@@ -289,6 +291,7 @@ oly_ai.Panel = class {
           ' style="flex:1;margin:0;border-radius:18px;font-size:0.875rem;border:1px solid var(--dark-border-color);background:var(--control-bg);color:var(--text-color);padding:8px 14px;resize:none;min-height:36px;max-height:120px;line-height:1.4;outline:none;font-family:inherit;overflow:hidden;"></textarea>' +
           '<span id="panel-mic-btn" style="cursor:pointer;height:2rem;width:2rem;min-width:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex-shrink:0;transition:all 0.2s;" title="' + __("Voice input") + '">' + ICON.mic + '</span>' +
           '<span class="oly-ai-send-btn" id="panel-send-btn" style="cursor:pointer;height:2rem;width:2rem;min-width:2rem;border-radius:50%;background:var(--primary-color);display:flex;align-items:center;justify-content:center;position:relative;z-index:2;flex-shrink:0;">' + ICON.send + '</span>' +
+        '</div>' +
         '</div>' +
         '<div class="oly-ai-input-footer" style="display:flex;align-items:center;justify-content:space-between;padding-top:6px;">' +
           '<select class="oly-ai-model-sel" id="panel-model-sel" style="background:var(--control-bg);border:1px solid var(--border-color);border-radius:12px;color:var(--text-muted);font-size:0.6875rem;padding:3px 10px;outline:none;cursor:pointer;max-width:160px;">' + model_opts + '</select>' +
@@ -644,11 +647,57 @@ oly_ai.Panel = class {
       if (me._recording) me._stop_recording(); else me._start_recording();
     });
     this.$input.on('keydown', function (e) {
+      // If mention dropdown is open, handle navigation
+      var $dd = me.$panel.find('#panel-mention-dropdown');
+      if ($dd.is(':visible')) {
+        if (e.which === 40) { // ArrowDown
+          e.preventDefault();
+          var $items = $dd.find('.oly-mention-item');
+          var $cur = $items.filter('.active');
+          var idx = $items.index($cur);
+          $cur.removeClass('active');
+          $items.eq(Math.min(idx + 1, $items.length - 1)).addClass('active');
+          return;
+        } else if (e.which === 38) { // ArrowUp
+          e.preventDefault();
+          var $items = $dd.find('.oly-mention-item');
+          var $cur = $items.filter('.active');
+          var idx = $items.index($cur);
+          $cur.removeClass('active');
+          $items.eq(Math.max(idx - 1, 0)).addClass('active');
+          return;
+        } else if (e.which === 13 || e.which === 9) { // Enter or Tab
+          var $sel = $dd.find('.oly-mention-item.active');
+          if ($sel.length) {
+            e.preventDefault();
+            me._insert_mention($sel.data('doctype'));
+            return;
+          }
+        } else if (e.which === 27) { // Escape
+          $dd.hide().empty();
+          return;
+        }
+      }
       if (e.which === 13 && !e.shiftKey) { e.preventDefault(); me.send(); }
     });
+    this._mention_timer = null;
     this.$input.on('input', function () {
       this.style.height = 'auto';
       this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+      // @mention detection
+      clearTimeout(me._mention_timer);
+      var val = this.value;
+      var pos = this.selectionStart;
+      var before = val.substring(0, pos);
+      var match = before.match(/@([A-Za-z\s]{1,40})$/);
+      if (match) {
+        var q = match[1].trim();
+        if (q.length >= 1) {
+          me._mention_timer = setTimeout(function () { me._search_doctypes(q); }, 200);
+        }
+      } else {
+        me.$panel.find('#panel-mention-dropdown').hide().empty();
+      }
     });
 
     // File attachment
@@ -1331,6 +1380,48 @@ oly_ai.Panel = class {
         frappe.show_alert({ message: __('TTS failed'), indicator: 'red' });
       }
     });
+  }
+
+  // ── @Mention autocomplete ──
+  _search_doctypes(query) {
+    var me = this;
+    frappe.xcall('oly_ai.api.chat.get_doctype_suggestions', { query: query }).then(function (results) {
+      var $dd = me.$panel.find('#panel-mention-dropdown');
+      if (!results || !results.length) { $dd.hide().empty(); return; }
+      var html = '';
+      results.forEach(function (r, i) {
+        html += '<div class="oly-mention-item' + (i === 0 ? ' active' : '') + '" data-doctype="' + frappe.utils.escape_html(r.name) + '"' +
+          ' style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;font-size:0.8125rem;color:var(--text-color);transition:background .1s;">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 3v18"/><path d="M3 9h18"/></svg>' +
+          '<span style="font-weight:600;">' + frappe.utils.escape_html(r.name) + '</span>' +
+          '<span style="font-size:0.7rem;color:var(--text-muted);">' + frappe.utils.escape_html(r.module || '') + '</span>' +
+        '</div>';
+      });
+      $dd.html(html).show();
+      $dd.find('.oly-mention-item').on('click', function () {
+        me._insert_mention($(this).data('doctype'));
+      }).on('mouseenter', function () {
+        $dd.find('.oly-mention-item').removeClass('active');
+        $(this).addClass('active');
+      });
+    });
+  }
+
+  _insert_mention(doctype) {
+    var $dd = this.$panel.find('#panel-mention-dropdown');
+    $dd.hide().empty();
+    var el = this.$input[0];
+    var val = el.value;
+    var pos = el.selectionStart;
+    var before = val.substring(0, pos);
+    var after = val.substring(pos);
+    var new_before = before.replace(/@[A-Za-z\s]{1,40}$/, '@' + doctype + ' ');
+    el.value = new_before + after;
+    var new_pos = new_before.length;
+    el.setSelectionRange(new_pos, new_pos);
+    el.focus();
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
   }
 };
 
