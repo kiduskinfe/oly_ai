@@ -144,19 +144,18 @@ oly_ai.add_ai_buttons = function (frm, features) {
   frm.add_custom_button(__("Ask AI..."), function () { oly_ai.show_custom_prompt(frm); }, group);
   // Replace the verbose "AI Assist" label with a compact icon + "AI"
   setTimeout(function () {
-    var $grp = frm.page.inner_toolbar.find('.btn-group:has([data-group="' + group + '"])');
+    var encoded = encodeURIComponent(group);
+    var $grp = frm.page.inner_toolbar.find('.inner-group-button[data-label="' + encoded + '"]');
     if (!$grp.length) return;
-    var $btn = $grp.find('button.btn-default:first');
+    var $btn = $grp.find('button').first();
     if ($btn.length) {
-      $btn.html(
+      $btn.empty().append(
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + oly_ai.brand_color() + '" style="vertical-align:-2px;margin-right:3px;">' +
           '<path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"/>' +
-        '</svg>' +
-        '<span>AI</span> <span class="caret" style="margin-left:2px;"></span>'
+        '</svg> AI ' + frappe.utils.icon("select", "xs")
       );
-      $btn.css({'padding': '4px 8px', 'font-weight': '600', 'font-size': '12px'});
     }
-  }, 200);
+  }, 300);
 };
 
 // ═══════════════════════════════════════════════════════════════
