@@ -23,9 +23,10 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       '.oly-fp-sb-new:hover svg{stroke:white;}',
       /* share filter tabs */
       '.oly-fp-share-tabs{display:flex;gap:2px;padding:0 12px 8px;}',
-      '.oly-fp-share-tab{flex:1;text-align:center;padding:5px 0;font-size:0.7rem;font-weight:600;color:var(--text-muted);background:transparent;border:none;border-radius:6px;cursor:pointer;font-family:inherit;transition:all .12s;}',
+      '.oly-fp-share-tab{flex:1;text-align:center;padding:5px 0;font-size:0.7rem;font-weight:600;color:var(--text-muted);background:transparent;border:1px solid transparent;border-radius:6px;cursor:pointer;font-family:inherit;transition:all .12s;}',
       '.oly-fp-share-tab:hover{color:var(--text-color);background:var(--bg-light-gray);}',
-      '.oly-fp-share-tab.active{color:var(--primary-color);background:var(--control-bg);}',
+      '.oly-fp-share-tab.active{color:var(--text-color);background:var(--control-bg);border-color:var(--dark-border-color);}',
+      '[data-theme="dark"] .oly-fp-share-tab.active{color:white !important;background:var(--gray-700) !important;border-color:var(--gray-600) !important;}',
       /* shared badge on session items */
       '.oly-fp-shared-badge{font-size:0.6rem;color:var(--text-muted);background:var(--control-bg);border-radius:4px;padding:1px 5px;margin-left:4px;white-space:nowrap;}',
       '.oly-fp .oly-ai-chip:hover{background:var(--bg-light-gray);border-color:var(--primary-color);}',
