@@ -12,4 +12,13 @@ class AIChatSession(Document):
 
 	def validate(self):
 		if self.user != frappe.session.user and frappe.session.user != "Administrator":
-			frappe.throw("You can only access your own chat sessions.")
+			# Allow shared users to read (but validation only fires on save)
+			if not self._is_shared_with(frappe.session.user):
+				frappe.throw("You can only access your own chat sessions.")
+
+	def _is_shared_with(self, user):
+		"""Check if a user has been shared this session."""
+		for row in (self.shared_with or []):
+			if row.user == user:
+				return True
+		return False

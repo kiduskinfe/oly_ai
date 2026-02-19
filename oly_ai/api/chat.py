@@ -209,14 +209,54 @@ def _build_multipart_content(text, file_urls):
 
 
 @frappe.whitelist()
-def get_sessions(search=None, limit=50, offset=0):
+def get_sessions(search=None, limit=50, offset=0, filter_type=None):
 	"""Get chat sessions for the current user.
 
+	Args:
+		search: Search string for title
+		limit: Max results
+		offset: Pagination offset
+		filter_type: 'mine' (default), 'shared', or 'all'
+
 	Returns:
-		list: [{"name", "title", "modified", "message_count", "preview"}]
+		list: [{"name", "title", "modified", "message_count", "preview", "owner", "shared"}]
 	"""
 	user = frappe.session.user
-	filters = {"user": user}
+	filter_type = filter_type or "mine"
+
+	if filter_type == "shared":
+		# Sessions shared with me (not my own)
+		shared_names = frappe.db.sql(
+			"""SELECT parent FROM `tabAI Chat Shared User`
+			WHERE user=%s AND parenttype='AI Chat Session'""",
+			user, as_list=True,
+		)
+		shared_names = [r[0] for r in shared_names]
+		if not shared_names:
+			return []
+		filters = {"name": ["in", shared_names]}
+	elif filter_type == "all":
+		# My own + shared with me
+		shared_names = frappe.db.sql(
+			"""SELECT parent FROM `tabAI Chat Shared User`
+			WHERE user=%s AND parenttype='AI Chat Session'""",
+			user, as_list=True,
+		)
+		shared_names = [r[0] for r in shared_names]
+		# Build OR filter: user=me OR name in shared_names
+		if shared_names:
+			filters = {"name": ["in",
+				[r[0] for r in frappe.db.sql(
+					"""SELECT name FROM `tabAI Chat Session`
+					WHERE user=%s OR name IN %s""",
+					(user, shared_names), as_list=True,
+				)]
+			]}
+		else:
+			filters = {"user": user}
+	else:
+		# mine (default)
+		filters = {"user": user}
 
 	if search:
 		filters["title"] = ["like", f"%{search}%"]
@@ -224,13 +264,13 @@ def get_sessions(search=None, limit=50, offset=0):
 	sessions = frappe.get_all(
 		"AI Chat Session",
 		filters=filters,
-		fields=["name", "title", "modified", "creation"],
+		fields=["name", "title", "modified", "creation", "user"],
 		order_by="modified desc",
 		limit_page_length=int(limit),
 		start=int(offset),
 	)
 
-	# Get last message preview for each session
+	# Get last message preview + shared flag
 	for s in sessions:
 		last_msg = frappe.db.sql(
 			"""SELECT content FROM `tabAI Chat Message`
@@ -241,6 +281,8 @@ def get_sessions(search=None, limit=50, offset=0):
 		s["preview"] = (last_msg[0].content[:80] + "...") if last_msg else ""
 		msg_count = frappe.db.count("AI Chat Message", {"parent": s.name})
 		s["message_count"] = msg_count
+		s["is_owner"] = s["user"] == user
+		s["owner_name"] = frappe.db.get_value("User", s["user"], "full_name") if s["user"] != user else ""
 
 	return sessions
 
@@ -271,19 +313,20 @@ def create_session(title=None):
 
 @frappe.whitelist()
 def get_messages(session_name):
-	"""Get all messages for a chat session. User-scoped.
+	"""Get all messages for a chat session. User-scoped or shared.
 
 	Returns:
 		list: [{"role", "content", "model", "cost", "tokens_input", "tokens_output", "creation"}]
 	"""
 	user = frappe.session.user
 
-	# Verify ownership
+	# Verify ownership or shared access
 	session_user = frappe.db.get_value("AI Chat Session", session_name, "user")
 	if not session_user:
 		frappe.throw(_("Chat session not found"), frappe.DoesNotExistError)
 	if session_user != user and user != "Administrator":
-		frappe.throw(_("Access denied"), frappe.PermissionError)
+		if not _is_shared_with(session_name, user):
+			frappe.throw(_("Access denied"), frappe.PermissionError)
 
 	messages = frappe.db.sql(
 		"""SELECT role, content, model, tokens_input, tokens_output,
@@ -314,12 +357,12 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 	"""
 	user = frappe.session.user
 
-	# Verify ownership
+	# Verify ownership (only owner can send messages, not shared users)
 	session_user = frappe.db.get_value("AI Chat Session", session_name, "user")
 	if not session_user:
 		frappe.throw(_("Chat session not found"), frappe.DoesNotExistError)
 	if session_user != user and user != "Administrator":
-		frappe.throw(_("Access denied"), frappe.PermissionError)
+		frappe.throw(_("Access denied — only the chat owner can send messages"), frappe.PermissionError)
 
 	# Check AI is configured
 	settings = frappe.get_cached_doc("AI Settings")
@@ -1027,3 +1070,127 @@ def generate_image(session_name, prompt, size="1024x1024", quality="standard"):
 		session.save()
 		frappe.db.commit()
 		raise
+
+
+# ─── Sharing Helpers ────────────────────────────────────────────
+
+def _is_shared_with(session_name, user):
+	"""Check if a session is shared with a user."""
+	return frappe.db.exists("AI Chat Shared User", {
+		"parent": session_name,
+		"parenttype": "AI Chat Session",
+		"user": user,
+	})
+
+
+def _verify_owner(session_name, user):
+	"""Verify the current user is the session owner. Throws on failure."""
+	session_user = frappe.db.get_value("AI Chat Session", session_name, "user")
+	if not session_user:
+		frappe.throw(_("Chat session not found"), frappe.DoesNotExistError)
+	if session_user != user and user != "Administrator":
+		frappe.throw(_("Only the session owner can manage sharing"), frappe.PermissionError)
+
+
+@frappe.whitelist()
+def share_session(session_name, users):
+	"""Share a chat session with one or more users.
+
+	Args:
+		session_name: AI Chat Session name
+		users: JSON-encoded list of user emails, or a single email string
+
+	Returns:
+		dict: {"success": True, "shared_with": [...]}
+	"""
+	import json as _json
+
+	user = frappe.session.user
+	_verify_owner(session_name, user)
+
+	if isinstance(users, str):
+		try:
+			users = _json.loads(users)
+		except (ValueError, TypeError):
+			users = [users]
+
+	if not isinstance(users, list) or not users:
+		frappe.throw(_("Please provide at least one user to share with"))
+
+	session = frappe.get_doc("AI Chat Session", session_name)
+	existing = {row.user for row in (session.shared_with or [])}
+
+	added = []
+	for u in users:
+		u = u.strip()
+		if not u or u == user:
+			continue
+		if u in existing:
+			continue
+		if not frappe.db.exists("User", u):
+			continue
+		session.append("shared_with", {
+			"user": u,
+			"full_name": frappe.db.get_value("User", u, "full_name") or u,
+			"shared_at": frappe.utils.now_datetime(),
+		})
+		added.append(u)
+
+	if added:
+		session.flags.ignore_permissions = True
+		session.save()
+		frappe.db.commit()
+
+	return {
+		"success": True,
+		"added": added,
+		"shared_with": [{"user": r.user, "full_name": r.full_name} for r in session.shared_with],
+	}
+
+
+@frappe.whitelist()
+def unshare_session(session_name, unshare_user):
+	"""Remove sharing for a specific user.
+
+	Args:
+		session_name: AI Chat Session name
+		unshare_user: User email to remove
+
+	Returns:
+		dict: {"success": True}
+	"""
+	user = frappe.session.user
+	_verify_owner(session_name, user)
+
+	session = frappe.get_doc("AI Chat Session", session_name)
+	session.shared_with = [r for r in (session.shared_with or []) if r.user != unshare_user]
+	session.flags.ignore_permissions = True
+	session.save()
+	frappe.db.commit()
+
+	return {"success": True}
+
+
+@frappe.whitelist()
+def get_shared_users(session_name):
+	"""Get list of users a session is shared with.
+
+	Returns:
+		list: [{"user", "full_name", "shared_at"}]
+	"""
+	user = frappe.session.user
+	session_user = frappe.db.get_value("AI Chat Session", session_name, "user")
+	if not session_user:
+		frappe.throw(_("Chat session not found"), frappe.DoesNotExistError)
+	if session_user != user and user != "Administrator":
+		frappe.throw(_("Access denied"), frappe.PermissionError)
+
+	rows = frappe.db.sql(
+		"""SELECT user, full_name, shared_at
+		FROM `tabAI Chat Shared User`
+		WHERE parent=%s AND parenttype='AI Chat Session'
+		ORDER BY shared_at ASC""",
+		session_name,
+		as_dict=True,
+	)
+	return rows

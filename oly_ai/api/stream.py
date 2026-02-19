@@ -50,12 +50,12 @@ def send_message_stream(session_name, message, model=None, mode=None, file_urls=
 	"""
 	user = frappe.session.user
 
-	# Verify ownership
+	# Verify ownership (only owner can send messages via stream)
 	session_user = frappe.db.get_value("AI Chat Session", session_name, "user")
 	if not session_user:
 		frappe.throw(_("Chat session not found"), frappe.DoesNotExistError)
 	if session_user != user and user != "Administrator":
-		frappe.throw(_("Access denied"), frappe.PermissionError)
+		frappe.throw(_("Access denied — only the chat owner can send messages"), frappe.PermissionError)
 
 	# Check AI is configured
 	settings = frappe.get_cached_doc("AI Settings")

@@ -14,7 +14,9 @@
   "memory_section",
   "conversation_summary",
   "messages_section",
-  "messages"
+  "messages",
+  "sharing_section",
+  "shared_with"
  ],
  "fields": [
   {
@@ -80,6 +82,18 @@
    "fieldtype": "Table",
    "label": "Messages",
    "options": "AI Chat Message"
+  },
+  {
+   "fieldname": "sharing_section",
+   "fieldtype": "Section Break",
+   "label": "Sharing",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "shared_with",
+   "fieldtype": "Table",
+   "label": "Shared With",
+   "options": "AI Chat Shared User"
   }
  ],
  "index_web_pages_for_search": 0,

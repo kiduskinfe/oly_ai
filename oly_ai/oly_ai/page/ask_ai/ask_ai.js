@@ -21,6 +21,13 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       '.oly-fp-sb-act:hover{color:var(--primary-color);}',
       '.oly-fp-sb-new:hover{background:var(--primary-color) !important;color:white !important;}',
       '.oly-fp-sb-new:hover svg{stroke:white;}',
+      /* share filter tabs */
+      '.oly-fp-share-tabs{display:flex;gap:2px;padding:0 12px 8px;}',
+      '.oly-fp-share-tab{flex:1;text-align:center;padding:5px 0;font-size:0.7rem;font-weight:600;color:var(--text-muted);background:transparent;border:none;border-radius:6px;cursor:pointer;font-family:inherit;transition:all .12s;}',
+      '.oly-fp-share-tab:hover{color:var(--text-color);background:var(--bg-light-gray);}',
+      '.oly-fp-share-tab.active{color:var(--primary-color);background:var(--control-bg);}',
+      /* shared badge on session items */
+      '.oly-fp-shared-badge{font-size:0.6rem;color:var(--text-muted);background:var(--control-bg);border-radius:4px;padding:1px 5px;margin-left:4px;white-space:nowrap;}',
       '.oly-fp .oly-ai-chip:hover{background:var(--bg-light-gray);border-color:var(--primary-color);}',
       '.oly-fp .oly-ai-send-btn:hover{opacity:0.85;}',
       '.oly-fp .oly-ai-copy-btn:hover{color:var(--primary-color);}',
@@ -198,6 +205,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   var _fp_recording = false;
   var _fp_media_recorder = null;
   var _fp_audio_chunks = [];
+  var current_filter = 'mine'; // 'mine' | 'shared' | 'all'
   var _fp_rec_stream = null;
   var _fp_rec_timer = null;
   var _fp_tts_audio = null;
@@ -407,6 +415,11 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       '<div style="padding:0 12px 8px;">' +
         '<input type="text" id="fp-search" placeholder="' + __("Search...") + '" style="width:100%;padding:8px 12px;border:1px solid var(--dark-border-color);border-radius:8px;background:var(--control-bg);color:var(--text-color);font-size:0.8125rem;outline:none;font-family:inherit;" />' +
       '</div>' +
+      '<div class="oly-fp-share-tabs" id="fp-share-tabs">' +
+        '<button class="oly-fp-share-tab active" data-filter="mine">' + __("My Chats") + '</button>' +
+        '<button class="oly-fp-share-tab" data-filter="shared">' + __("Shared") + '</button>' +
+        '<button class="oly-fp-share-tab" data-filter="all">' + __("All") + '</button>' +
+      '</div>' +
       '<div id="fp-list" style="flex:1;overflow-y:auto;padding:0 8px;"></div>' +
       '<div style="padding:12px;border-top:1px solid var(--dark-border-color);">' +
         '<div style="display:flex;align-items:center;gap:10px;">' +
@@ -527,6 +540,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   function load_sessions() {
     frappe.call({
       method: "oly_ai.api.chat.get_sessions",
+      args: { filter_type: current_filter },
       callback: function (r) {
         sessions = (r && r.message) || [];
         render_sessions(sessions);
@@ -539,7 +553,8 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
 
   function render_sessions(list) {
     if (!list.length) {
-      $list.html('<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:0.8125rem;">' + __("No conversations yet") + '</div>');
+      var empty_msg = current_filter === 'shared' ? __("No shared conversations") : __("No conversations yet");
+      $list.html('<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:0.8125rem;">' + empty_msg + '</div>');
       return;
     }
     var groups = group_by_date(list);
@@ -549,11 +564,19 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       html += '<div style="padding:8px 8px 4px;font-size:0.7rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;">' + g.label + '</div>';
       g.items.forEach(function (s) {
         var active = current_session === s.name ? " active" : "";
+        var is_mine = s.is_owner !== false;
         html += '<div class="oly-fp-sb-item' + active + '" data-name="' + s.name + '" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:0.8125rem;color:var(--text-color);position:relative;transition:background .12s;">';
-        html += '<span class="oly-fp-sb-item-title" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + frappe.utils.escape_html(s.title || __("Untitled")) + '</span>';
+        html += '<span class="oly-fp-sb-item-title" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + frappe.utils.escape_html(s.title || __("Untitled"));
+        if (!is_mine && s.owner_name) {
+          html += '<span class="oly-fp-shared-badge">' + frappe.utils.escape_html(s.owner_name) + '</span>';
+        }
+        html += '</span>';
         html += '<span class="oly-fp-sb-item-acts" style="display:flex;gap:2px;flex-shrink:0;">';
-        html += '<button class="oly-fp-sb-act" data-act="edit" data-name="' + s.name + '" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;display:flex;">' + I.edit + '</button>';
-        html += '<button class="oly-fp-sb-act" data-act="delete" data-name="' + s.name + '" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;display:flex;">' + I.trash + '</button>';
+        if (is_mine) {
+          html += '<button class="oly-fp-sb-act" data-act="share" data-name="' + s.name + '" title="' + __("Share") + '" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;display:flex;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>';
+          html += '<button class="oly-fp-sb-act" data-act="edit" data-name="' + s.name + '" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;display:flex;">' + I.edit + '</button>';
+          html += '<button class="oly-fp-sb-act" data-act="delete" data-name="' + s.name + '" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;display:flex;">' + I.trash + '</button>';
+        }
         html += '</span>';
         html += '</div>';
       });
@@ -569,6 +592,9 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     });
     $list.find('[data-act="delete"]').on("click", function (e) {
       e.stopPropagation(); delete_session($(this).data("name"));
+    });
+    $list.find('[data-act="share"]').on("click", function (e) {
+      e.stopPropagation(); show_share_dialog($(this).data("name"));
     });
   }
 
@@ -682,6 +708,79 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         load_sessions();
       });
     });
+  }
+
+  // ── Share Dialog ──
+  function show_share_dialog(session_name) {
+    var d = new frappe.ui.Dialog({
+      title: __("Share Conversation"),
+      fields: [
+        {
+          fieldname: "users",
+          fieldtype: "MultiSelectPills",
+          label: __("Share with"),
+          get_data: function (txt) {
+            return frappe.xcall("frappe.client.get_list", {
+              doctype: "User",
+              filters: { enabled: 1, name: ["!=", frappe.session.user], full_name: ["like", "%" + (txt || "") + "%"] },
+              fields: ["name as value", "full_name as description"],
+              limit_page_length: 10,
+            });
+          },
+          reqd: 1,
+        },
+        { fieldtype: "Section Break" },
+        { fieldname: "shared_list_html", fieldtype: "HTML", label: __("Currently shared with") },
+      ],
+      primary_action_label: __("Share"),
+      primary_action: function (v) {
+        if (!v.users || !v.users.length) return;
+        frappe.xcall("oly_ai.api.chat.share_session", {
+          session_name: session_name,
+          users: JSON.stringify(v.users),
+        }).then(function (r) {
+          if (r && r.added && r.added.length) {
+            frappe.show_alert({ message: __("Shared with {0} user(s)", [r.added.length]), indicator: "green" });
+          } else {
+            frappe.show_alert({ message: __("Already shared with selected users"), indicator: "blue" });
+          }
+          d.hide();
+          load_sessions();
+        });
+      },
+    });
+
+    // Load existing shared users
+    frappe.xcall("oly_ai.api.chat.get_shared_users", { session_name: session_name }).then(function (rows) {
+      if (!rows || !rows.length) {
+        d.fields_dict.shared_list_html.$wrapper.html(
+          '<p style="color:var(--text-muted);font-size:0.8rem;">' + __("Not shared with anyone yet") + '</p>'
+        );
+      } else {
+        var html = '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+        rows.forEach(function (r) {
+          html += '<span style="display:inline-flex;align-items:center;gap:4px;background:var(--control-bg);border:1px solid var(--border-color);border-radius:16px;padding:4px 10px;font-size:0.8rem;">' +
+            '<span>' + frappe.utils.escape_html(r.full_name || r.user) + '</span>' +
+            '<span class="fp-unshare-btn" data-user="' + r.user + '" style="cursor:pointer;color:var(--text-muted);font-weight:700;margin-left:2px;">&times;</span>' +
+          '</span>';
+        });
+        html += '</div>';
+        d.fields_dict.shared_list_html.$wrapper.html(html);
+        d.fields_dict.shared_list_html.$wrapper.find('.fp-unshare-btn').on('click', function () {
+          var u = $(this).data('user');
+          frappe.xcall("oly_ai.api.chat.unshare_session", {
+            session_name: session_name,
+            unshare_user: u,
+          }).then(function () {
+            frappe.show_alert({ message: __("Removed"), indicator: "orange" });
+            d.hide();
+            show_share_dialog(session_name); // re-open to refresh
+          });
+        });
+      }
+    });
+
+    d.show();
   }
 
   // ── File Attachments ──
@@ -1183,6 +1282,15 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     var q = $(this).val().toLowerCase();
     if (!q) { render_sessions(sessions); return; }
     render_sessions(sessions.filter(function (s) { return (s.title || "").toLowerCase().indexOf(q) > -1; }));
+  });
+  // Share filter tabs
+  $("#fp-share-tabs").on("click", ".oly-fp-share-tab", function () {
+    var f = $(this).data("filter");
+    if (f === current_filter) return;
+    current_filter = f;
+    $("#fp-share-tabs .oly-fp-share-tab").removeClass("active");
+    $(this).addClass("active");
+    load_sessions();
   });
   // Attach button
   $("#fp-attach").on("click", function () { $("#fp-file-input").trigger("click"); });

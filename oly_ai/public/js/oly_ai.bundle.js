@@ -174,6 +174,7 @@ oly_ai.Panel = class {
     this._stream_buffer = "";
     this._safety_timer = null;
     this._active_request_id = null;
+    this._history_filter = 'mine'; // 'mine' | 'shared' | 'all'
     this.create_app();
     this._load_model_catalog();
     this._load_sessions();
@@ -391,12 +392,18 @@ oly_ai.Panel = class {
         '<input type="text" class="oly-ai-hist-search" placeholder="' + __("Search chats...") + '"' +
         ' style="width:100%;padding:8px 12px 8px 32px;border:1px solid var(--border-color);border-radius:8px;background:var(--control-bg);color:var(--text-color);font-size:0.8125rem;outline:none;font-family:inherit;" />' +
       '</div>' +
+      '<div style="display:flex;gap:2px;margin-top:8px;">' +
+        '<button class="oly-ai-hist-filter' + (me._history_filter === 'mine' ? ' active' : '') + '" data-filter="mine" style="flex:1;text-align:center;padding:5px 0;font-size:0.7rem;font-weight:600;color:' + (me._history_filter === 'mine' ? 'var(--primary-color)' : 'var(--text-muted)') + ';background:' + (me._history_filter === 'mine' ? 'var(--control-bg)' : 'transparent') + ';border:none;border-radius:6px;cursor:pointer;font-family:inherit;">' + __("My Chats") + '</button>' +
+        '<button class="oly-ai-hist-filter' + (me._history_filter === 'shared' ? ' active' : '') + '" data-filter="shared" style="flex:1;text-align:center;padding:5px 0;font-size:0.7rem;font-weight:600;color:' + (me._history_filter === 'shared' ? 'var(--primary-color)' : 'var(--text-muted)') + ';background:' + (me._history_filter === 'shared' ? 'var(--control-bg)' : 'transparent') + ';border:none;border-radius:6px;cursor:pointer;font-family:inherit;">' + __("Shared") + '</button>' +
+        '<button class="oly-ai-hist-filter' + (me._history_filter === 'all' ? ' active' : '') + '" data-filter="all" style="flex:1;text-align:center;padding:5px 0;font-size:0.7rem;font-weight:600;color:' + (me._history_filter === 'all' ? 'var(--primary-color)' : 'var(--text-muted)') + ';background:' + (me._history_filter === 'all' ? 'var(--control-bg)' : 'transparent') + ';border:none;border-radius:6px;cursor:pointer;font-family:inherit;">' + __("All") + '</button>' +
+      '</div>' +
       '</div>';
 
     if (!this.sessions.length) {
+      var emptyMsg = me._history_filter === 'shared' ? __("No shared conversations") : __("No conversations yet");
       html += '<div class="oly-ai-hist-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;color:var(--text-muted);">' +
         '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:12px;opacity:0.4;"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>' +
-        '<span style="font-size:0.875rem;">' + __("No conversations yet") + '</span>' +
+        '<span style="font-size:0.875rem;">' + emptyMsg + '</span>' +
       '</div>';
     } else {
       html += '<div class="oly-ai-hist-list" style="padding:8px;">';
@@ -405,12 +412,22 @@ oly_ai.Panel = class {
         html += '<div class="oly-ai-hist-group-label" style="padding:12px 8px 4px;font-size:0.6875rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;">' + g.label + '</div>';
         g.items.forEach(function (s) {
           var activeBg = me.session === s.name ? 'background:var(--control-bg);' : '';
+          var is_mine = s.is_owner !== false;
           html += '<div class="oly-ai-hist-item" data-name="' + s.name + '" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;' + activeBg + '">' +
-            '<span class="oly-ai-hist-item-title" style="flex:1;font-size:0.8125rem;color:var(--text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + frappe.utils.escape_html(s.title || __("Untitled")) + '</span>' +
-            '<span class="oly-ai-hist-item-acts" style="display:flex;align-items:center;opacity:0;transition:opacity 0.15s;">' +
-              '<button class="oly-ai-hist-act" data-act="delete" data-name="' + s.name + '" title="' + __("Delete") + '"' +
-              ' style="background:none;border:none;padding:4px;border-radius:4px;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;">' + ICON.trash + '</button>' +
-            '</span>' +
+            '<span class="oly-ai-hist-item-title" style="flex:1;font-size:0.8125rem;color:var(--text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + frappe.utils.escape_html(s.title || __("Untitled"));
+          if (!is_mine && s.owner_name) {
+            html += '<span style="font-size:0.6rem;color:var(--text-muted);background:var(--control-bg);border-radius:4px;padding:1px 5px;margin-left:4px;">' + frappe.utils.escape_html(s.owner_name) + '</span>';
+          }
+          html += '</span>' +
+            '<span class="oly-ai-hist-item-acts" style="display:flex;align-items:center;opacity:0;transition:opacity 0.15s;">';
+          if (is_mine) {
+            html += '<button class="oly-ai-hist-act" data-act="share" data-name="' + s.name + '" title="' + __("Share") + '"' +
+              ' style="background:none;border:none;padding:4px;border-radius:4px;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;">' +
+              '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>';
+            html += '<button class="oly-ai-hist-act" data-act="delete" data-name="' + s.name + '" title="' + __("Delete") + '"' +
+              ' style="background:none;border:none;padding:4px;border-radius:4px;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;">' + ICON.trash + '</button>';
+          }
+          html += '</span>' +
           '</div>';
         });
       });
@@ -418,6 +435,14 @@ oly_ai.Panel = class {
     }
 
     this.$history.html(html);
+
+    // Tab filter clicks
+    this.$history.find('.oly-ai-hist-filter').on('click', function () {
+      var f = $(this).data('filter');
+      if (f === me._history_filter) return;
+      me._history_filter = f;
+      me._load_sessions(function () { me._render_history(); });
+    });
 
     this.$history.find('.oly-ai-hist-item').on('mouseenter', function () {
       $(this).css('background', 'var(--control-bg)');
@@ -442,6 +467,10 @@ oly_ai.Panel = class {
       e.stopPropagation();
       me._delete_session($(this).data('name'));
     });
+    this.$history.find('[data-act="share"]').on('click', function (e) {
+      e.stopPropagation();
+      me._show_share_dialog($(this).data('name'));
+    });
     this.$history.find('.oly-ai-hist-search').on('input', function () {
       var q = $(this).val().toLowerCase();
       me.$history.find('.oly-ai-hist-item').each(function () {
@@ -449,6 +478,77 @@ oly_ai.Panel = class {
         $(this).toggle(t.indexOf(q) > -1);
       });
     });
+  }
+
+  _show_share_dialog(session_name) {
+    var me = this;
+    var d = new frappe.ui.Dialog({
+      title: __("Share Conversation"),
+      fields: [
+        {
+          fieldname: "users",
+          fieldtype: "MultiSelectPills",
+          label: __("Share with"),
+          get_data: function (txt) {
+            return frappe.xcall("frappe.client.get_list", {
+              doctype: "User",
+              filters: { enabled: 1, name: ["!=", frappe.session.user], full_name: ["like", "%" + (txt || "") + "%"] },
+              fields: ["name as value", "full_name as description"],
+              limit_page_length: 10,
+            });
+          },
+          reqd: 1,
+        },
+        { fieldtype: "Section Break" },
+        { fieldname: "shared_list_html", fieldtype: "HTML", label: __("Currently shared with") },
+      ],
+      primary_action_label: __("Share"),
+      primary_action: function (v) {
+        if (!v.users || !v.users.length) return;
+        frappe.xcall("oly_ai.api.chat.share_session", {
+          session_name: session_name,
+          users: JSON.stringify(v.users),
+        }).then(function (r) {
+          if (r && r.added && r.added.length) {
+            frappe.show_alert({ message: __("Shared with {0} user(s)", [r.added.length]), indicator: "green" });
+          } else {
+            frappe.show_alert({ message: __("Already shared"), indicator: "blue" });
+          }
+          d.hide();
+        });
+      },
+    });
+
+    frappe.xcall("oly_ai.api.chat.get_shared_users", { session_name: session_name }).then(function (rows) {
+      if (!rows || !rows.length) {
+        d.fields_dict.shared_list_html.$wrapper.html(
+          '<p style="color:var(--text-muted);font-size:0.8rem;">' + __("Not shared with anyone yet") + '</p>'
+        );
+      } else {
+        var html = '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+        rows.forEach(function (r) {
+          html += '<span style="display:inline-flex;align-items:center;gap:4px;background:var(--control-bg);border:1px solid var(--border-color);border-radius:16px;padding:4px 10px;font-size:0.8rem;">' +
+            '<span>' + frappe.utils.escape_html(r.full_name || r.user) + '</span>' +
+            '<span class="panel-unshare-btn" data-user="' + r.user + '" style="cursor:pointer;color:var(--text-muted);font-weight:700;margin-left:2px;">&times;</span>' +
+          '</span>';
+        });
+        html += '</div>';
+        d.fields_dict.shared_list_html.$wrapper.html(html);
+        d.fields_dict.shared_list_html.$wrapper.find('.panel-unshare-btn').on('click', function () {
+          var u = $(this).data('user');
+          frappe.xcall("oly_ai.api.chat.unshare_session", {
+            session_name: session_name,
+            unshare_user: u,
+          }).then(function () {
+            frappe.show_alert({ message: __("Removed"), indicator: "orange" });
+            d.hide();
+            me._show_share_dialog(session_name);
+          });
+        });
+      }
+    });
+
+    d.show();
   }
 
   _group_sessions(list) {
@@ -612,6 +712,7 @@ oly_ai.Panel = class {
     var me = this;
     frappe.call({
       method: "oly_ai.api.chat.get_sessions",
+      args: { filter_type: me._history_filter },
       callback: function (r) { me.sessions = (r && r.message) || []; if (cb) cb(); },
       error: function () { if (cb) cb(); },
     });
