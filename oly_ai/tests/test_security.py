@@ -1140,3 +1140,484 @@ class TestCrossAppIntegration(FrappeTestCase):
 		from oly_ai.core.tools import get_available_tools
 		source = inspect.getsource(get_available_tools)
 		self.assertIn("analyze_sentiment", source)
+
+
+class TestTelegramHandler(FrappeTestCase):
+	"""Tests for core/telegram_handler.py — AI bridge for Telegram messages."""
+
+	# ── _should_respond guard tests ──────────────────────────────────
+
+	def test_should_respond_incoming_text_bot_handling(self):
+		"""Incoming text message in bot-handled chat qualifies for AI response."""
+		from oly_ai.core.telegram_handler import _should_respond
+
+		mock_msg = MagicMock()
+		mock_msg.direction = "Incoming"
+		mock_msg.message_type = "Text"
+		mock_msg.content = "Hello, I need help with my order"
+		mock_msg.chat = "TGC-12345"
+
+		with patch("frappe.get_cached_doc") as mock_get_doc:
+			# First call: Telegram Chat
+			chat_mock = MagicMock()
+			chat_mock.is_bot_handling = 1
+			# Second call: AI Settings
+			settings_mock = MagicMock()
+			settings_mock.is_configured.return_value = True
+			settings_mock.enable_telegram_ai = 1
+
+			mock_get_doc.side_effect = [chat_mock, settings_mock]
+
+			result = _should_respond(mock_msg)
+			self.assertTrue(result)
+
+	def test_should_not_respond_outgoing(self):
+		"""Outgoing messages should not trigger AI response."""
+		from oly_ai.core.telegram_handler import _should_respond
+
+		mock_msg = MagicMock()
+		mock_msg.direction = "Outgoing"
+		mock_msg.message_type = "Text"
+		mock_msg.content = "Hello"
+
+		result = _should_respond(mock_msg)
+		self.assertFalse(result)
+
+	def test_should_not_respond_photo(self):
+		"""Non-text messages (Photo, Document, etc.) should not trigger AI."""
+		from oly_ai.core.telegram_handler import _should_respond
+
+		mock_msg = MagicMock()
+		mock_msg.direction = "Incoming"
+		mock_msg.message_type = "Photo"
+		mock_msg.content = ""
+
+		result = _should_respond(mock_msg)
+		self.assertFalse(result)
+
+	def test_should_not_respond_empty_content(self):
+		"""Messages with empty content should not trigger AI."""
+		from oly_ai.core.telegram_handler import _should_respond
+
+		mock_msg = MagicMock()
+		mock_msg.direction = "Incoming"
+		mock_msg.message_type = "Text"
+		mock_msg.content = "   "
+
+		result = _should_respond(mock_msg)
+		self.assertFalse(result)
+
+	def test_should_not_respond_bot_command(self):
+		"""Bot commands starting with / should not trigger AI."""
+		from oly_ai.core.telegram_handler import _should_respond
+
+		mock_msg = MagicMock()
+		mock_msg.direction = "Incoming"
+		mock_msg.message_type = "Text"
+		mock_msg.content = "/start"
+
+		result = _should_respond(mock_msg)
+		self.assertFalse(result)
+
+	def test_should_not_respond_human_agent_assigned(self):
+		"""Messages in human-assigned chats (is_bot_handling=0) should not trigger AI."""
+		from oly_ai.core.telegram_handler import _should_respond
+
+		mock_msg = MagicMock()
+		mock_msg.direction = "Incoming"
+		mock_msg.message_type = "Text"
+		mock_msg.content = "Hello"
+		mock_msg.chat = "TGC-12345"
+
+		with patch("frappe.get_cached_doc") as mock_get_doc:
+			chat_mock = MagicMock()
+			chat_mock.is_bot_handling = 0
+			mock_get_doc.return_value = chat_mock
+
+			result = _should_respond(mock_msg)
+			self.assertFalse(result)
+
+	def test_should_not_respond_ai_disabled(self):
+		"""Messages should not trigger AI when enable_telegram_ai is off."""
+		from oly_ai.core.telegram_handler import _should_respond
+
+		mock_msg = MagicMock()
+		mock_msg.direction = "Incoming"
+		mock_msg.message_type = "Text"
+		mock_msg.content = "Hello"
+		mock_msg.chat = "TGC-12345"
+
+		with patch("frappe.get_cached_doc") as mock_get_doc:
+			chat_mock = MagicMock()
+			chat_mock.is_bot_handling = 1
+			settings_mock = MagicMock()
+			settings_mock.is_configured.return_value = True
+			settings_mock.enable_telegram_ai = 0
+
+			mock_get_doc.side_effect = [chat_mock, settings_mock]
+
+			result = _should_respond(mock_msg)
+			self.assertFalse(result)
+
+	def test_should_not_respond_ai_not_configured(self):
+		"""Messages should not trigger AI when provider is not configured."""
+		from oly_ai.core.telegram_handler import _should_respond
+
+		mock_msg = MagicMock()
+		mock_msg.direction = "Incoming"
+		mock_msg.message_type = "Text"
+		mock_msg.content = "Hello"
+		mock_msg.chat = "TGC-12345"
+
+		with patch("frappe.get_cached_doc") as mock_get_doc:
+			chat_mock = MagicMock()
+			chat_mock.is_bot_handling = 1
+			settings_mock = MagicMock()
+			settings_mock.is_configured.return_value = False
+
+			mock_get_doc.side_effect = [chat_mock, settings_mock]
+
+			result = _should_respond(mock_msg)
+			self.assertFalse(result)
+
+	# ── Hook entry point tests ───────────────────────────────────────
+
+	def test_on_incoming_enqueues_response(self):
+		"""on_incoming_telegram_message enqueues generate_ai_response when qualified."""
+		from oly_ai.core.telegram_handler import on_incoming_telegram_message
+
+		mock_msg = MagicMock()
+		mock_msg.name = "TGM-2026-00001"
+		mock_msg.direction = "Incoming"
+		mock_msg.message_type = "Text"
+		mock_msg.content = "What is my order status?"
+		mock_msg.chat = "TGC-99"
+
+		with patch("oly_ai.core.telegram_handler._should_respond", return_value=True), \
+		     patch("frappe.enqueue") as mock_enqueue:
+			on_incoming_telegram_message(mock_msg)
+			mock_enqueue.assert_called_once()
+			call_kwargs = mock_enqueue.call_args
+			self.assertIn("telegram_handler.generate_ai_response", call_kwargs[0][0])
+			self.assertEqual(call_kwargs[1]["message_name"], "TGM-2026-00001")
+
+	def test_on_incoming_skips_when_not_qualified(self):
+		"""on_incoming_telegram_message does NOT enqueue when guard fails."""
+		from oly_ai.core.telegram_handler import on_incoming_telegram_message
+
+		mock_msg = MagicMock()
+		mock_msg.direction = "Outgoing"
+
+		with patch("oly_ai.core.telegram_handler._should_respond", return_value=False), \
+		     patch("frappe.enqueue") as mock_enqueue:
+			on_incoming_telegram_message(mock_msg)
+			mock_enqueue.assert_not_called()
+
+	# ── Conversation history ─────────────────────────────────────────
+
+	def test_build_conversation_history(self):
+		"""Conversation history is fetched in chronological order."""
+		from oly_ai.core.telegram_handler import _build_conversation_history
+
+		mock_messages = [
+			MagicMock(direction="Incoming", content="Hi", caption="", sender_name="User", sent_at="2026-02-20 10:00"),
+			MagicMock(direction="Outgoing", content="Hello!", caption="", sender_name="Bot", sent_at="2026-02-20 10:01"),
+			MagicMock(direction="Incoming", content="Order status?", caption="", sender_name="User", sent_at="2026-02-20 10:02"),
+		]
+		# frappe.get_all returns newest first; handler reverses
+		with patch("frappe.get_all", return_value=list(reversed(mock_messages))):
+			history = _build_conversation_history("TGC-123")
+			self.assertEqual(len(history), 3)
+			self.assertEqual(history[0].direction, "Incoming")
+			self.assertEqual(history[-1].direction, "Incoming")
+
+	# ── ERP context enrichment ───────────────────────────────────────
+
+	def test_build_erp_context_with_customer(self):
+		"""ERP context includes customer info and recent orders."""
+		from oly_ai.core.telegram_handler import _build_erp_context
+
+		chat_mock = MagicMock()
+		chat_mock.customer = "CUST-001"
+		chat_mock.lead = None
+		chat_mock.contact = None
+
+		customer_mock = MagicMock()
+		customer_mock.customer_name = "Abebe Kebede"
+		customer_mock.get.side_effect = lambda k, d=None: {
+			"customer_group": "Individual",
+			"territory": "Addis Ababa",
+		}.get(k, d)
+
+		order_mock = MagicMock()
+		order_mock.name = "SO-2026-001"
+		order_mock.grand_total = 5000
+		order_mock.currency = "ETB"
+		order_mock.status = "Completed"
+		order_mock.transaction_date = "2026-02-15"
+
+		with patch("frappe.get_cached_doc", return_value=customer_mock), \
+		     patch("frappe.get_all", side_effect=[[order_mock], []]), \
+		     patch("frappe.db.sql", return_value=[[0]]):
+			ctx = _build_erp_context(chat_mock)
+			self.assertIn("Abebe Kebede", ctx)
+			self.assertIn("SO-2026-001", ctx)
+			self.assertIn("ETB", ctx)
+
+	def test_build_erp_context_with_lead(self):
+		"""ERP context includes lead info."""
+		from oly_ai.core.telegram_handler import _build_erp_context
+
+		chat_mock = MagicMock()
+		chat_mock.customer = None
+		chat_mock.lead = "LEAD-001"
+		chat_mock.contact = None
+
+		lead_mock = MagicMock()
+		lead_mock.lead_name = "Test Lead"
+		lead_mock.company_name = "Test Corp"
+		lead_mock.status = "Interested"
+		lead_mock.source = "Telegram"
+		lead_mock.get.side_effect = lambda k, d=None: {
+			"company_name": "Test Corp",
+			"status": "Interested",
+			"source": "Telegram",
+		}.get(k, d)
+
+		with patch("frappe.get_cached_doc", return_value=lead_mock):
+			ctx = _build_erp_context(chat_mock)
+			self.assertIn("Test Lead", ctx)
+			self.assertIn("Test Corp", ctx)
+			self.assertIn("Interested", ctx)
+
+	def test_build_erp_context_empty_when_no_links(self):
+		"""ERP context is empty when no customer/lead/contact is linked."""
+		from oly_ai.core.telegram_handler import _build_erp_context
+
+		chat_mock = MagicMock()
+		chat_mock.customer = None
+		chat_mock.lead = None
+		chat_mock.contact = None
+
+		ctx = _build_erp_context(chat_mock)
+		self.assertEqual(ctx, "")
+
+	# ── Prompt building ──────────────────────────────────────────────
+
+	def test_build_prompt_without_context(self):
+		"""Prompt is just the message content when no ERP context."""
+		from oly_ai.core.telegram_handler import _build_prompt
+
+		mock_msg = MagicMock()
+		mock_msg.content = "What are your working hours?"
+
+		result = _build_prompt(mock_msg, "")
+		self.assertEqual(result, "What are your working hours?")
+
+	def test_build_prompt_with_context(self):
+		"""Prompt includes ERP context when available."""
+		from oly_ai.core.telegram_handler import _build_prompt
+
+		mock_msg = MagicMock()
+		mock_msg.content = "Where is my order?"
+
+		result = _build_prompt(mock_msg, "Customer: Abebe\nRecent Orders:\n  - SO-001")
+		self.assertIn("Where is my order?", result)
+		self.assertIn("Customer: Abebe", result)
+		self.assertIn("SO-001", result)
+
+	# ── System prompt ────────────────────────────────────────────────
+
+	def test_system_prompt_includes_company(self):
+		"""System prompt includes dynamic company name."""
+		from oly_ai.core.telegram_handler import _get_telegram_system_prompt
+
+		chat_mock = MagicMock()
+		chat_mock.contact_name = "Test User"
+		chat_mock.get.return_value = "testuser"
+
+		with patch("oly_ai.core.telegram_handler._get_company_context") as mock_ctx:
+			mock_ctx.return_value = {
+				"company_name": "OLY Technologies",
+				"description": "Industry: Technology",
+			}
+			prompt = _get_telegram_system_prompt(chat_mock)
+			self.assertIn("OLY Technologies", prompt)
+			self.assertIn("Test User", prompt)
+			self.assertIn("Telegram", prompt)
+			self.assertIn("concise", prompt.lower())
+
+	# ── Telegram markdown sanitization ───────────────────────────────
+
+	def test_sanitize_balanced_markdown(self):
+		"""Balanced markdown is left intact."""
+		from oly_ai.core.telegram_handler import _sanitize_for_telegram
+
+		text = "This is *bold* and _italic_ text"
+		result = _sanitize_for_telegram(text)
+		self.assertEqual(result, text)
+
+	def test_sanitize_unbalanced_markdown(self):
+		"""Unbalanced markdown chars are stripped."""
+		from oly_ai.core.telegram_handler import _sanitize_for_telegram
+
+		text = "This has a stray * in it"
+		result = _sanitize_for_telegram(text)
+		self.assertNotIn("*", result)
+
+	# ── generate_ai_response integration ─────────────────────────────
+
+	def test_generate_ai_response_sends_reply(self):
+		"""generate_ai_response calls LLM and sends via Telegram."""
+		from oly_ai.core.telegram_handler import generate_ai_response
+
+		msg_mock = MagicMock()
+		msg_mock.name = "TGM-2026-00001"
+		msg_mock.content = "Hello"
+		msg_mock.chat = "TGC-123"
+		msg_mock.telegram_message_id = "999"
+
+		chat_mock = MagicMock()
+		chat_mock.name = "TGC-123"
+		chat_mock.account = "Bot1"
+		chat_mock.chat_id = "12345"
+		chat_mock.is_bot_handling = 1
+		chat_mock.contact_name = "Test"
+		chat_mock.customer = None
+		chat_mock.lead = None
+		chat_mock.contact = None
+		chat_mock.get.return_value = None
+
+		provider_mock = MagicMock()
+		provider_mock.chat.return_value = {"content": "Hi there! How can I help?"}
+
+		send_result = {"ok": True, "result": {"message_id": 1000}}
+
+		with patch("frappe.get_doc", side_effect=[msg_mock, chat_mock]), \
+		     patch("frappe.get_all", return_value=[]), \
+		     patch("frappe.get_cached_doc") as mock_cached, \
+		     patch("oly_ai.core.telegram_handler._get_company_context",
+		           return_value={"company_name": "Test Co", "description": ""}), \
+		     patch("oly_ai.core.provider.LLMProvider", return_value=provider_mock), \
+		     patch("oly.telegram.bot_handler.send_message", return_value=send_result) as mock_send, \
+		     patch("oly.telegram.message_processor._save_outgoing_message") as mock_save:
+			generate_ai_response("TGM-2026-00001")
+
+			# Verify send_message was called with correct args
+			mock_send.assert_called_once()
+			call_kwargs = mock_send.call_args[1]
+			self.assertEqual(call_kwargs["account_name"], "Bot1")
+			self.assertEqual(call_kwargs["chat_id"], "12345")
+			self.assertIn("Hi there", call_kwargs["text"])
+
+			# Verify outgoing message was saved
+			mock_save.assert_called_once()
+
+	def test_generate_ai_response_retries_plain_on_parse_error(self):
+		"""If Telegram rejects Markdown, retries with plain text."""
+		from oly_ai.core.telegram_handler import generate_ai_response
+
+		msg_mock = MagicMock()
+		msg_mock.name = "TGM-2026-00002"
+		msg_mock.content = "Hello"
+		msg_mock.chat = "TGC-123"
+		msg_mock.telegram_message_id = "999"
+
+		chat_mock = MagicMock()
+		chat_mock.name = "TGC-123"
+		chat_mock.account = "Bot1"
+		chat_mock.chat_id = "12345"
+		chat_mock.is_bot_handling = 1
+		chat_mock.contact_name = None
+		chat_mock.customer = None
+		chat_mock.lead = None
+		chat_mock.contact = None
+		chat_mock.get.return_value = None
+
+		provider_mock = MagicMock()
+		provider_mock.chat.return_value = {"content": "Reply text"}
+
+		# First call fails with parse error, second succeeds
+		send_results = [
+			{"ok": False, "description": "Bad Request: can't parse entities: Markdown parse error"},
+			{"ok": True, "result": {"message_id": 1001}},
+		]
+
+		with patch("frappe.get_doc", side_effect=[msg_mock, chat_mock]), \
+		     patch("frappe.get_all", return_value=[]), \
+		     patch("frappe.get_cached_doc") as mock_cached, \
+		     patch("oly_ai.core.telegram_handler._get_company_context",
+		           return_value={"company_name": "Test Co", "description": ""}), \
+		     patch("oly_ai.core.provider.LLMProvider", return_value=provider_mock), \
+		     patch("oly.telegram.bot_handler.send_message", side_effect=send_results) as mock_send, \
+		     patch("oly.telegram.message_processor._save_outgoing_message") as mock_save:
+			generate_ai_response("TGM-2026-00002")
+
+			# Should have been called twice (Markdown retry → plain)
+			self.assertEqual(mock_send.call_count, 2)
+			# Second call should have parse_mode=None
+			second_call = mock_send.call_args_list[1][1]
+			self.assertIsNone(second_call["parse_mode"])
+			# Outgoing message still saved
+			mock_save.assert_called_once()
+
+	def test_generate_ai_response_skips_if_agent_claimed(self):
+		"""If a human agent claimed the chat between enqueue and execution, skip."""
+		from oly_ai.core.telegram_handler import generate_ai_response
+
+		msg_mock = MagicMock()
+		msg_mock.name = "TGM-2026-00003"
+		msg_mock.chat = "TGC-123"
+
+		chat_mock = MagicMock()
+		chat_mock.is_bot_handling = 0  # Agent took over
+
+		with patch("frappe.get_doc", side_effect=[msg_mock, chat_mock]), \
+		     patch("oly.telegram.bot_handler.send_message") as mock_send:
+			generate_ai_response("TGM-2026-00003")
+			mock_send.assert_not_called()
+
+	def test_generate_ai_response_handles_llm_error(self):
+		"""LLM errors are caught and logged, not raised."""
+		from oly_ai.core.telegram_handler import generate_ai_response
+
+		msg_mock = MagicMock()
+		msg_mock.name = "TGM-2026-00004"
+		msg_mock.content = "Hello"
+		msg_mock.chat = "TGC-123"
+		msg_mock.telegram_message_id = "999"
+
+		chat_mock = MagicMock()
+		chat_mock.name = "TGC-123"
+		chat_mock.account = "Bot1"
+		chat_mock.chat_id = "12345"
+		chat_mock.is_bot_handling = 1
+		chat_mock.contact_name = None
+		chat_mock.customer = None
+		chat_mock.lead = None
+		chat_mock.contact = None
+		chat_mock.get.return_value = None
+
+		provider_mock = MagicMock()
+		provider_mock.chat.side_effect = Exception("API timeout")
+
+		with patch("frappe.get_doc", side_effect=[msg_mock, chat_mock]), \
+		     patch("frappe.get_all", return_value=[]), \
+		     patch("frappe.get_cached_doc") as mock_cached, \
+		     patch("oly_ai.core.telegram_handler._get_company_context",
+		           return_value={"company_name": "Test Co", "description": ""}), \
+		     patch("oly_ai.core.provider.LLMProvider", return_value=provider_mock), \
+		     patch("frappe.log_error") as mock_log:
+			# Should NOT raise
+			generate_ai_response("TGM-2026-00004")
+			mock_log.assert_called_once()
+			self.assertIn("API timeout", mock_log.call_args[0][0])
+
+	# ── hooks.py registration ────────────────────────────────────────
+
+	def test_telegram_message_hook_registered(self):
+		"""Telegram Message after_insert hook is registered in doc_events."""
+		from oly_ai.hooks import doc_events
+		self.assertIn("Telegram Message", doc_events)
+		self.assertIn("after_insert", doc_events["Telegram Message"])
+		self.assertIn("telegram_handler", doc_events["Telegram Message"]["after_insert"])

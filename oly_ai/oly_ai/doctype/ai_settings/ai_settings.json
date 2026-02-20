@@ -55,7 +55,13 @@
   "log_prompts",
   "log_responses",
   "self_hosted_section",
-  "self_hosted_info"
+  "self_hosted_info",
+  "customer_service_section",
+  "enable_auto_response",
+  "auto_response_doctypes",
+  "column_break_cs",
+  "enable_telegram_ai",
+  "telegram_ai_info"
  ],
  "fields": [
   {
@@ -382,6 +388,44 @@
    "fieldtype": "HTML",
    "label": "Self-Hosted Info",
    "options": "<div class='alert alert-info'><b>To switch to self-hosted AI:</b><ol><li>Set Provider Type to 'Custom (OpenAI Compatible)'</li><li>Set Base URL to your Ollama/vLLM endpoint (e.g. http://your-server:11434/v1)</li><li>Set the model name (e.g. llama3.1)</li><li>Set API Key to any value (or your server's auth token)</li></ol><p>No code changes needed. All features work the same.</p></div>"
+  },
+  {
+   "fieldname": "customer_service_section",
+   "fieldtype": "Section Break",
+   "label": "Customer Service AI"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_auto_response",
+   "fieldtype": "Check",
+   "label": "Enable Email Auto-Response Drafts",
+   "description": "When enabled, incoming emails on Issues, Leads, etc. get AI-drafted reply suggestions posted as comments."
+  },
+  {
+   "fieldname": "auto_response_doctypes",
+   "fieldtype": "Table",
+   "label": "Auto-Response DocTypes",
+   "options": "AI Indexed DocType",
+   "depends_on": "eval:doc.enable_auto_response",
+   "description": "Which DocTypes should trigger email auto-response drafts. Leave empty for defaults (Issue, Lead, Opportunity, etc.)"
+  },
+  {
+   "fieldname": "column_break_cs",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_telegram_ai",
+   "fieldtype": "Check",
+   "label": "Enable Telegram AI Responses",
+   "description": "When enabled, incoming Telegram messages in bot-handled chats get automatic AI responses via the Oly Telegram Hub."
+  },
+  {
+   "fieldname": "telegram_ai_info",
+   "fieldtype": "HTML",
+   "label": "Telegram AI Info",
+   "options": "<div class='alert alert-info'><b>Telegram AI:</b> When a chat has <i>Bot Handling</i> enabled (default for new chats), the AI will automatically respond to incoming messages. Once an agent is assigned, AI stops responding to that chat. Requires the Oly app's Telegram Hub to be configured.</div>",
+   "depends_on": "eval:doc.enable_telegram_ai"
   }
  ],
  "index_web_pages_for_search": 0,

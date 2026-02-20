@@ -104,6 +104,9 @@ doc_events = {
     "Communication": {
         "after_insert": "oly_ai.core.email_handler.on_incoming_communication",
     },
+    "Telegram Message": {
+        "after_insert": "oly_ai.core.telegram_handler.on_incoming_telegram_message",
+    },
 }
 
 # Fixtures — export AI Prompt Templates
