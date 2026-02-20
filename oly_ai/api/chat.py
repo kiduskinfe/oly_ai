@@ -433,6 +433,11 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 	if not allowed:
 		frappe.throw(_(reason))
 
+	# Rate limit check
+	rate_ok, retry_after = _check_rate_limit(user)
+	if not rate_ok:
+		frappe.throw(_("Rate limit exceeded. Please wait {0} seconds.").format(retry_after))
+
 	# Load the session
 	session = frappe.get_doc("AI Chat Session", session_name)
 
@@ -489,7 +494,8 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 	try:
 		from oly_ai.core.memory import get_session_context
 		conversation = get_session_context(session)
-	except Exception:
+	except Exception as e:
+		frappe.logger("oly_ai").debug(f"Session memory failed: {e}")
 		# Fallback: use last 20 messages directly
 		conversation = []
 		for msg in session.messages[-20:]:
@@ -504,7 +510,8 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 		access = check_mode_access(user, mode)
 	except frappe.PermissionError:
 		raise
-	except Exception:
+	except Exception as e:
+		frappe.logger("oly_ai").debug(f"Access control check failed: {e}")
 		access = {"can_query_data": True, "can_execute_actions": False}
 
 	system_prompt = SYSTEM_PROMPTS.get(mode, SYSTEM_PROMPTS["ask"])
@@ -515,8 +522,8 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 	try:
 		from oly_ai.core.rag.retriever import build_rag_context
 		rag_context, sources = build_rag_context(message, top_k=5, min_score=0.7)
-	except Exception:
-		pass
+	except Exception as e:
+		frappe.logger("oly_ai").debug(f"RAG context failed: {e}")
 
 	# Build messages for the LLM
 	llm_messages = [{"role": "system", "content": system_prompt}]
@@ -535,8 +542,8 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 				"role": "system",
 				"content": user_memories,
 			})
-	except Exception:
-		pass
+	except Exception as e:
+		frappe.logger("oly_ai").debug(f"Long-term memory failed: {e}")
 
 	# @ Mention context — inject doctype schemas and/or specific document data
 	try:
@@ -563,8 +570,8 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 					"role": "system",
 					"content": doc_ctx,
 				})
-	except Exception:
-		pass
+	except Exception as e:
+		frappe.logger("oly_ai").debug(f"Mention context failed: {e}")
 
 	llm_messages.extend(conversation)
 
@@ -573,7 +580,8 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 	if file_urls:
 		try:
 			parsed_files = json.loads(file_urls) if isinstance(file_urls, str) else file_urls
-		except Exception:
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"File URL parse failed: {e}")
 			parsed_files = []
 
 	# If images are attached, replace the last user message content with multipart
@@ -590,6 +598,10 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 	requested_model = model
 	model_fallback_used = False
 
+	# Validate model name — basic allowlist check to prevent arbitrary model injection
+	if model and not _is_valid_model_name(model):
+		frappe.throw(_("Invalid model name: {0}").format(model))
+
 	# Get available tools for this mode
 	tools = None
 	try:
@@ -597,7 +609,8 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 		tool_list = get_available_tools(user=user, mode=mode)
 		if tool_list:
 			tools = tool_list
-	except Exception:
+	except Exception as e:
+		frappe.logger("oly_ai").debug(f"Tool loading failed: {e}")
 		tools = None
 
 	try:
@@ -705,15 +718,15 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 		try:
 			from oly_ai.core.memory import maybe_summarize_session
 			maybe_summarize_session(session)
-		except Exception:
-			pass
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"Session summarization failed: {e}")
 
 		# Extract cross-session memories (long-term memory)
 		try:
 			from oly_ai.core.long_term_memory import extract_memories_from_session
 			extract_memories_from_session(session_name)
-		except Exception:
-			pass
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"Memory extraction failed: {e}")
 
 		# Audit log
 		try:
@@ -724,8 +737,8 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 				total_input_tokens, total_output_tokens,
 				cost, result["response_time"], "Success",
 			)
-		except Exception:
-			pass
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"Audit logging failed: {e}")
 
 		return {
 			"content": final_content,
@@ -874,32 +887,69 @@ _IMAGE_GEN_PATTERNS = [
 _IMAGE_GEN_RE = re.compile("|".join(_IMAGE_GEN_PATTERNS), re.IGNORECASE)
 
 
+# Regex for valid model name — alphanumeric, hyphens, dots, underscores, colons, slashes
+_VALID_MODEL_RE = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9\-_.:/]{1,120}$')
+
+
+def _is_valid_model_name(model_name):
+	"""Validate model name against a safe pattern to prevent injection."""
+	if not model_name or not isinstance(model_name, str):
+		return False
+	return bool(_VALID_MODEL_RE.match(model_name.strip()))
+
+
+def _check_rate_limit(user):
+	"""Per-user rate limiting using Redis. Returns (allowed, retry_after_seconds).
+
+	Enforces a sliding window of max requests per minute.
+	"""
+	try:
+		settings = frappe.get_cached_doc("AI Settings")
+		max_per_min = int(settings.get("rate_limit_per_minute") or 0)
+		if max_per_min <= 0:
+			return True, 0  # Rate limiting disabled
+
+		import time as _time
+		cache_key = f"oly_ai_rate:{user}"
+		now = _time.time()
+		window = 60  # 1 minute sliding window
+
+		# Use Redis sorted set for sliding window
+		redis = frappe.cache()
+		pipe = redis.pipeline()
+		# Remove entries older than the window
+		pipe.zremrangebyscore(cache_key, 0, now - window)
+		# Add current request
+		pipe.zadd(cache_key, {str(now): now})
+		# Count requests in window
+		pipe.zcard(cache_key)
+		# Set expiry on the key
+		pipe.expire(cache_key, window + 5)
+		results = pipe.execute()
+
+		count = results[2]
+		if count > max_per_min:
+			# Find the oldest entry to calculate retry_after
+			oldest = redis.zrange(cache_key, 0, 0, withscores=True)
+			retry_after = int(window - (now - oldest[0][1])) + 1 if oldest else window
+			return False, retry_after
+
+		return True, 0
+	except Exception:
+		# If Redis is down, allow the request (fail-open for rate limiting is acceptable)
+		return True, 0
+
+
 def _is_model_unavailable_error(exc):
 	"""Return True if exception indicates invalid/inaccessible model."""
-	msg = str(exc).lower()
-	if "model" not in msg:
-		return False
-	error_hints = [
-		"does not exist",
-		"do not have access",
-		"not found",
-		"invalid model",
-		"unknown model",
-		"not a chat model",
-		"not supported",
-		"did you mean",
-		"decommissioned",
-		"deprecated",
-	]
-	return any(h in msg for h in error_hints)
+	from oly_ai.core.utils import is_model_unavailable_error
+	return is_model_unavailable_error(exc)
 
 
 def _get_fallback_model(requested_model, settings):
 	"""Pick a fallback model when requested model is unavailable."""
-	fallback = settings.default_model or "gpt-4o-mini"
-	if fallback == requested_model:
-		return None
-	return fallback
+	from oly_ai.core.utils import get_fallback_model
+	return get_fallback_model(requested_model, settings)
 
 
 @frappe.whitelist()
@@ -1032,7 +1082,8 @@ def _save_generated_image(image_url, prompt, user):
 		file_doc.save()
 		frappe.db.commit()
 		return file_doc.file_url
-	except Exception:
+	except Exception as e:
+		frappe.logger("oly_ai").debug(f"Image save failed: {e}")
 		# If saving fails, return the original URL (temporary, expires in ~1hr)
 		return image_url
 
@@ -1065,7 +1116,8 @@ def _sanitize_image_prompt(prompt, settings):
 		)
 		sanitized = (result.get("content") or "").strip()
 		return sanitized if sanitized else prompt
-	except Exception:
+	except Exception as e:
+		frappe.logger("oly_ai").debug(f"Image prompt sanitization failed: {e}")
 		# If sanitization fails, use original prompt
 		return prompt
 
@@ -1104,6 +1156,11 @@ def _generate_image_internal(session, prompt, user, settings, size="1024x1024", 
 		"hd": {"1024x1024": 0.08, "1024x1792": 0.12, "1792x1024": 0.12},
 	}
 	estimated_cost = cost_map.get(quality, {}).get(size, 0.04)
+
+	# Track image generation cost in the budget system
+	# Use equivalent token count to represent the dollar cost (1 token ≈ $0.00001 for dall-e-3)
+	equiv_tokens = int(estimated_cost / 0.00001) if estimated_cost else 4000
+	track_usage("dall-e-3", equiv_tokens, 0, user)
 
 	content = f"Here's the generated image:\n\n![Generated Image]({local_url})\n\n"
 	if result.get("revised_prompt") and result["revised_prompt"] != prompt:
@@ -1199,6 +1256,10 @@ def generate_image(session_name, prompt, size="1024x1024", quality="standard"):
 			"hd": {"1024x1024": 0.08, "1024x1792": 0.12, "1792x1024": 0.12},
 		}
 		estimated_cost = cost_map.get(quality, {}).get(size, 0.04)
+
+		# Track image generation cost in the budget system
+		equiv_tokens = int(estimated_cost / 0.00001) if estimated_cost else 4000
+		track_usage("dall-e-3", equiv_tokens, 0, user)
 
 		# Build response content
 		content = f"Here's the generated image:\n\n![Generated Image]({local_url})\n\n"
@@ -1503,8 +1564,8 @@ def _build_doctype_context(doctype_names):
 		try:
 			count = frappe.db.count(dt_name)
 			dt_section += f"\n\nTotal records: {count}"
-		except Exception:
-			pass
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"DocType count failed for {dt_name}: {e}")
 
 		parts.append(dt_section)
 
@@ -1572,8 +1633,8 @@ def _build_specific_document_context(doc_mentions):
 								field_lines.append(f"    Row {i+1}: " + ", ".join(row_vals))
 
 			parts.append("\n".join(field_lines))
-		except Exception:
-			pass
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"Document context build failed: {e}")
 
 	if not parts:
 		return ""

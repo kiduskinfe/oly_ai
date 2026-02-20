@@ -9,6 +9,8 @@ import frappe
 import requests
 from frappe import _
 
+from oly_ai.core.cost_tracker import check_budget, track_usage
+
 
 @frappe.whitelist()
 def voice_to_text(audio_file=None):
@@ -19,7 +21,12 @@ def voice_to_text(audio_file=None):
 	Returns:
 		dict: {"text": str, "language": str}
 	"""
-	frappe.only_for(["System Manager", "All"])
+	user = frappe.session.user
+
+	# Budget check
+	allowed, reason = check_budget(user)
+	if not allowed:
+		frappe.throw(_(reason))
 
 	settings = frappe.get_cached_doc("AI Settings")
 	api_key = settings.get_password("api_key")
@@ -57,6 +64,9 @@ def voice_to_text(audio_file=None):
 		if not text:
 			frappe.throw(_("Could not transcribe audio. Please try again."))
 
+		# Track usage — Whisper costs ~$0.006/min, estimate ~100 tokens equivalent
+		track_usage("whisper-1", 100, 0, user)
+
 		return {"text": text, "language": data.get("language", "en")}
 
 	except requests.exceptions.HTTPError as e:
@@ -86,7 +96,12 @@ def text_to_speech(text, voice="alloy"):
 	Returns:
 		dict: {"audio_base64": str, "content_type": "audio/mpeg"}
 	"""
-	frappe.only_for(["System Manager", "All"])
+	user = frappe.session.user
+
+	# Budget check
+	allowed, reason = check_budget(user)
+	if not allowed:
+		frappe.throw(_(reason))
 
 	if not text or not text.strip():
 		frappe.throw(_("No text provided"))
@@ -115,6 +130,12 @@ def text_to_speech(text, voice="alloy"):
 		resp.raise_for_status()
 
 		audio_b64 = base64.b64encode(resp.content).decode("utf-8")
+
+		# Track usage — TTS-1 costs ~$0.015/1K chars, estimate based on text length
+		char_count = len(text)
+		estimated_tokens = max(char_count // 4, 50)  # Rough char-to-token ratio
+		track_usage("tts-1", estimated_tokens, 0, user)
+
 		return {
 			"audio_base64": audio_b64,
 			"content_type": "audio/mpeg",

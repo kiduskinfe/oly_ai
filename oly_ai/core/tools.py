@@ -496,6 +496,22 @@ def _tool_get_report(args, user):
 		return {"error": f"Failed to run report: {str(e)}"}
 
 
+def _validate_doctype_field(doctype, fieldname):
+	"""Validate that a fieldname exists on the given DocType. Returns True if valid."""
+	meta = frappe.get_meta(doctype)
+	valid_fields = {f.fieldname for f in meta.fields}
+	# Also allow standard fields
+	valid_fields.update({"name", "owner", "creation", "modified", "modified_by", "docstatus"})
+	return fieldname in valid_fields
+
+
+# Allowlisted SQL comparison operators (case-insensitive match)
+_ALLOWED_SQL_OPERATORS = {
+	"=", "!=", "<>", ">", "<", ">=", "<=",
+	"like", "not like", "in", "not in", "between", "is",
+}
+
+
 def _tool_get_list_summary(args, user):
 	"""Get aggregated summary — counts/totals grouped by a field."""
 	doctype = args["doctype"]
@@ -503,19 +519,34 @@ def _tool_get_list_summary(args, user):
 	aggregate_field = args.get("aggregate_field")
 	filters = args.get("filters", {})
 
+	# Validate doctype exists
+	if not frappe.db.exists("DocType", doctype):
+		return {"error": f"DocType '{doctype}' does not exist."}
+
 	if not frappe.has_permission(doctype, "read", user=user):
 		raise frappe.PermissionError
 
+	# Validate group_by field
+	if not _validate_doctype_field(doctype, group_by):
+		return {"error": f"Field '{group_by}' does not exist on {doctype}."}
+
 	agg_expr = ""
 	if aggregate_field:
+		if not _validate_doctype_field(doctype, aggregate_field):
+			return {"error": f"Field '{aggregate_field}' does not exist on {doctype}."}
 		agg_expr = f", SUM(`{aggregate_field}`) as total, AVG(`{aggregate_field}`) as average"
 
-	# Build filter conditions
+	# Build filter conditions — validate every key and operator
 	conditions = "WHERE 1=1"
 	values = []
 	for key, val in filters.items():
+		if not _validate_doctype_field(doctype, key):
+			return {"error": f"Filter field '{key}' does not exist on {doctype}."}
 		if isinstance(val, list) and len(val) == 2:
-			conditions += f" AND `{key}` {val[0]} %s"
+			operator = str(val[0]).strip().lower()
+			if operator not in _ALLOWED_SQL_OPERATORS:
+				return {"error": f"SQL operator '{val[0]}' is not allowed."}
+			conditions += f" AND `{key}` {operator} %s"
 			values.append(val[1])
 		else:
 			conditions += f" AND `{key}` = %s"

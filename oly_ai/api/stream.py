@@ -11,26 +11,7 @@ from frappe import _
 
 from oly_ai.core.provider import LLMProvider
 from oly_ai.core.cost_tracker import check_budget, track_usage
-
-
-def _is_model_unavailable_error(exc):
-	"""Return True if exception indicates invalid/inaccessible model."""
-	msg = str(exc).lower()
-	if "model" not in msg:
-		return False
-	keywords = [
-		"does not exist", "do not have access", "invalid model", "unknown model",
-		"not found", "not a chat model", "not supported", "did you mean",
-		"decommissioned", "deprecated",
-	]
-	return any(k in msg for k in keywords)
-
-
-def _get_fallback_model(requested_model, settings):
-	fallback = settings.default_model or "gpt-4o-mini"
-	if fallback == requested_model:
-		return None
-	return fallback
+from oly_ai.core.utils import is_model_unavailable_error, get_fallback_model
 
 
 @frappe.whitelist()
@@ -69,9 +50,20 @@ def send_message_stream(session_name, message, model=None, mode=None, file_urls=
 	if not allowed:
 		frappe.throw(_(reason))
 
+	# Rate limit check
+	from oly_ai.api.chat import _check_rate_limit
+	rate_ok, retry_after = _check_rate_limit(user)
+	if not rate_ok:
+		frappe.throw(_("Rate limit exceeded. Please wait {0} seconds.").format(retry_after))
+
 	task_id = str(uuid.uuid4())[:12]
 	mode = mode or "ask"
 	model = model or settings.default_model
+
+	# Validate model name
+	from oly_ai.api.chat import _is_valid_model_name
+	if model and not _is_valid_model_name(model):
+		frappe.throw(_("Invalid model name: {0}").format(model))
 
 	# Add user message to session first
 	session = frappe.get_doc("AI Chat Session", session_name)
@@ -122,7 +114,7 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 		for msg in session.messages[-20:]:
 			conversation.append({"role": msg.role, "content": msg.content})
 
-		# Access control check
+		# Access control check — fail closed: deny on any unexpected error
 		try:
 			from oly_ai.core.access_control import check_mode_access
 			check_mode_access(user, mode)
@@ -133,22 +125,17 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 				user=user,
 			)
 			return
-		except Exception:
-			pass
+		except Exception as e:
+			frappe.log_error(f"Access control error for {user}/{mode}: {e}", "AI Stream Access")
+			frappe.publish_realtime(
+				"ai_error",
+				{"task_id": task_id, "error": "Access check failed. Please try again."},
+				user=user,
+			)
+			return
 
 		# System prompt
-		try:
-			from oly_ai.api.chat import SYSTEM_PROMPTS
-		except ImportError:
-			SYSTEM_PROMPTS = None
-
-		if not SYSTEM_PROMPTS:
-			SYSTEM_PROMPTS = {
-				"ask": "You are an AI assistant for ERPNext ERP system at OLY Technologies. Be concise and helpful. Format responses with markdown when helpful.",
-				"agent": "You are an advanced AI agent for OLY Technologies' ERPNext system. Think step-by-step, analyze deeply, and provide comprehensive solutions. For research questions, produce structured reports.",
-				"execute": "You are an AI execution assistant for OLY Technologies' ERPNext. Generate precise, actionable execution plans for tasks in ERPNext.",
-			}
-			SYSTEM_PROMPTS["research"] = SYSTEM_PROMPTS["agent"]  # backward compat
+		from oly_ai.api.chat import SYSTEM_PROMPTS
 		system_prompt = SYSTEM_PROMPTS.get(mode, SYSTEM_PROMPTS["ask"])
 
 		# RAG context
@@ -157,8 +144,8 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 		try:
 			from oly_ai.core.rag.retriever import build_rag_context
 			rag_context, sources = build_rag_context(message, top_k=5, min_score=0.7)
-		except Exception:
-			pass
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"RAG context failed: {e}")
 
 		# Build LLM messages
 		llm_messages = [{"role": "system", "content": system_prompt}]
@@ -177,15 +164,16 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 					"role": "system",
 					"content": user_memories,
 				})
-		except Exception:
-			pass
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"Long-term memory failed: {e}")
 
 		# Memory: include conversation summary if available
 		try:
 			from oly_ai.core.memory import get_session_context
 			memory_messages = get_session_context(session)
 			llm_messages.extend(memory_messages)
-		except Exception:
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"Session memory failed: {e}")
 			llm_messages.extend(conversation)
 
 		# @ Mention context — inject doctype schemas if user referenced @DocType
@@ -199,8 +187,8 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 						"role": "system",
 						"content": doctype_ctx,
 					})
-		except Exception:
-			pass
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"Mention context failed: {e}")
 
 		# Handle file uploads for vision
 		if file_urls:
@@ -213,8 +201,8 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 						if llm_messages[i].get("role") == "user":
 							llm_messages[i]["content"] = last_user_content
 							break
-			except Exception:
-				pass
+			except Exception as e:
+				frappe.logger("oly_ai").debug(f"File upload vision parse failed: {e}")
 
 		# Get tools for agent/execute modes
 		tools = None
@@ -223,10 +211,8 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 			tool_list = get_available_tools(user=user, mode=mode)
 			if tool_list:
 				tools = tool_list
-		except Exception:
-			pass
-
-		provider = LLMProvider(settings)
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"Tool loading failed: {e}")
 		start_time = time.time()
 		requested_model = model
 
@@ -240,8 +226,8 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 				)
 				return
 			except Exception as e:
-				fallback = _get_fallback_model(model, settings)
-				if fallback and _is_model_unavailable_error(e):
+				fallback = get_fallback_model(model, settings)
+				if fallback and is_model_unavailable_error(e):
 					_process_with_tools(
 						task_id, provider, llm_messages, fallback, tools,
 						user, session, session_name, sources, start_time, mode,
@@ -275,8 +261,8 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 		try:
 			full_content, tokens_input, tokens_output = _run_stream(model)
 		except Exception as e:
-			fallback = _get_fallback_model(model, settings)
-			if fallback and _is_model_unavailable_error(e):
+			fallback = get_fallback_model(model, settings)
+			if fallback and is_model_unavailable_error(e):
 				model = fallback
 				full_content, tokens_input, tokens_output = _run_stream(model)
 				full_content = (
@@ -315,15 +301,15 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 		try:
 			from oly_ai.core.memory import maybe_summarize_session
 			maybe_summarize_session(session)
-		except Exception:
-			pass
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"Session summarization failed: {e}")
 
 		# Extract cross-session memories (long-term memory)
 		try:
 			from oly_ai.core.long_term_memory import extract_memories_from_session
 			extract_memories_from_session(session.name)
-		except Exception:
-			pass
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"Memory extraction failed: {e}")
 
 		# Send done event
 		frappe.publish_realtime(

@@ -36,6 +36,7 @@
   "budget_section",
   "monthly_budget_usd",
   "daily_request_limit",
+  "rate_limit_per_minute",
   "budget_warning_pct",
   "column_break_budget",
   "current_month_spend",
@@ -252,6 +253,13 @@
    "label": "Daily Request Limit per User",
    "default": 100,
    "description": "Max AI requests per user per day. 0 = unlimited."
+  },
+  {
+   "fieldname": "rate_limit_per_minute",
+   "fieldtype": "Int",
+   "label": "Rate Limit per Minute",
+   "default": 0,
+   "description": "Max AI requests per user per minute (sliding window). 0 = disabled."
   },
   {
    "default": "80",
