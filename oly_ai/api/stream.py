@@ -8,6 +8,7 @@ import uuid
 
 import frappe
 from frappe import _
+from frappe.utils import cint
 
 from oly_ai.core.provider import LLMProvider
 from oly_ai.core.cost_tracker import check_budget, track_usage
@@ -204,6 +205,28 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 			except Exception as e:
 				frappe.logger("oly_ai").debug(f"File upload vision parse failed: {e}")
 
+		# Parse non-image file attachments (PDF, Excel, CSV, etc.) for AI analysis
+		if file_urls:
+			try:
+				import os
+				parsed_file_list = json.loads(file_urls) if isinstance(file_urls, str) else file_urls
+				from oly_ai.core.file_parser import parse_files_for_context, SUPPORTED_EXTENSIONS
+				from oly_ai.api.chat import _IMAGE_EXTS
+				non_image_files = [
+					f for f in (parsed_file_list or [])
+					if os.path.splitext(f)[1].lower() in SUPPORTED_EXTENSIONS
+					and os.path.splitext(f)[1].lower() not in _IMAGE_EXTS
+				]
+				if non_image_files:
+					file_context = parse_files_for_context(non_image_files)
+					if file_context:
+						llm_messages.append({
+							"role": "system",
+							"content": f"The user has attached the following file(s) for analysis:\n{file_context}",
+						})
+			except Exception as e:
+				frappe.logger("oly_ai").debug(f"File parsing failed: {e}")
+
 		# Get tools for agent/execute modes
 		tools = None
 		try:
@@ -340,7 +363,10 @@ def _process_with_tools(task_id, provider, llm_messages, model, tools, user, ses
 	"""Handle tool-calling flow: run tool rounds non-streamed, then stream the final response."""
 	from oly_ai.core.tools import execute_tool
 
-	MAX_TOOL_ROUNDS = 5
+	try:
+		MAX_TOOL_ROUNDS = min(max(cint(frappe.db.get_single_value("AI Settings", "max_tool_rounds")) or 10, 1), 25)
+	except Exception:
+		MAX_TOOL_ROUNDS = 10
 	total_input_tokens = 0
 	total_output_tokens = 0
 	pending_actions = []

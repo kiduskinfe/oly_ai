@@ -9,6 +9,7 @@ import os
 
 import frappe
 from frappe import _
+from frappe.utils import cint
 from oly_ai.core.provider import LLMProvider
 from oly_ai.core.cache import get_cached_response, set_cached_response
 from oly_ai.core.cost_tracker import check_budget, track_usage
@@ -636,6 +637,25 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 				llm_messages[i]["content"] = last_user_content
 				break
 
+	# Parse non-image file attachments (PDF, Excel, CSV, etc.) for AI analysis
+	if parsed_files:
+		try:
+			from oly_ai.core.file_parser import parse_files_for_context, SUPPORTED_EXTENSIONS
+			non_image_files = [
+				f for f in parsed_files
+				if os.path.splitext(f)[1].lower() in SUPPORTED_EXTENSIONS
+				and os.path.splitext(f)[1].lower() not in _IMAGE_EXTS
+			]
+			if non_image_files:
+				file_context = parse_files_for_context(non_image_files)
+				if file_context:
+					llm_messages.append({
+						"role": "system",
+						"content": f"The user has attached the following file(s) for analysis:\n{file_context}",
+					})
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"File parsing failed: {e}")
+
 	# Determine model: use per-request override, else session/settings default
 	model = model or settings.default_model
 	requested_model = model
@@ -664,7 +684,10 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 		# Max 5 iterations to prevent infinite loops.
 		total_input_tokens = 0
 		total_output_tokens = 0
-		MAX_TOOL_ROUNDS = 5
+		try:
+			MAX_TOOL_ROUNDS = min(max(cint(frappe.db.get_single_value("AI Settings", "max_tool_rounds")) or 10, 1), 25)
+		except Exception:
+			MAX_TOOL_ROUNDS = 10
 		pending_actions = []  # Track action requests for approval
 
 		for _round in range(MAX_TOOL_ROUNDS):

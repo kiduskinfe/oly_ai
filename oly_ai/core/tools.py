@@ -326,10 +326,45 @@ TOOL_DEFINITIONS = [
 			},
 		},
 	},
+	{
+		"type": "function",
+		"function": {
+			"name": "web_search",
+			"description": "Search the internet for current information. Use this when the user asks about recent events, external data, market info, competitor analysis, or anything not available in the ERP system. Returns top search results with titles, URLs, and snippets.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"query": {
+						"type": "string",
+						"description": "The search query, e.g. 'latest Ethiopian tax rates 2026' or 'frappe framework v15 new features'",
+					},
+					"max_results": {
+						"type": "integer",
+						"description": "Number of results to return (1-10, default 5)",
+					},
+				},
+				"required": ["query"],
+			},
+		},
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "analyze_file",
+			"description": "Read and analyze an uploaded file attachment. Supports PDF, Excel (.xlsx), CSV, Word (.docx), and text files. Use this when the user references an attached file or asks about file contents. Returns the extracted text content.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"file_url": {
+						"type": "string",
+						"description": "The file URL path, e.g. '/files/report.pdf' or '/private/files/data.xlsx'",
+					},
+				},
+				"required": ["file_url"],
+			},
+		},
+	},
 ]
-
-
-# ─── Tool Execution Functions ─────────────────────────────────
 
 def execute_tool(tool_name, arguments, user=None):
 	"""Execute a tool call and return the result.
@@ -357,6 +392,8 @@ def execute_tool(tool_name, arguments, user=None):
 		"delete_document": _tool_delete_document,
 		"send_communication": _tool_send_communication,
 		"add_comment": _tool_add_comment,
+		"web_search": _tool_web_search,
+		"analyze_file": _tool_analyze_file,
 	}
 
 	handler = tool_map.get(tool_name)
@@ -886,6 +923,74 @@ def _tool_add_comment(args, user):
 	}
 
 
+def _tool_web_search(args, user):
+	"""Search the internet using DuckDuckGo."""
+	query = args.get("query", "").strip()
+	if not query:
+		return {"error": "Search query is required"}
+
+	max_results = min(max(int(args.get("max_results", 5)), 1), 10)
+
+	try:
+		from duckduckgo_search import DDGS
+
+		with DDGS() as ddgs:
+			raw = list(ddgs.text(query, max_results=max_results))
+
+		results = []
+		for r in raw:
+			results.append({
+				"title": r.get("title", ""),
+				"url": r.get("href", ""),
+				"snippet": r.get("body", ""),
+			})
+
+		if not results:
+			return {"message": "No results found", "query": query}
+
+		return {
+			"query": query,
+			"result_count": len(results),
+			"results": results,
+		}
+	except ImportError:
+		return {"error": "Web search is not available. Install duckduckgo-search package."}
+	except Exception as e:
+		frappe.logger("oly_ai").warning(f"Web search failed: {e}")
+		return {"error": f"Search failed: {str(e)}"}
+
+
+def _tool_analyze_file(args, user):
+	"""Parse and analyze an uploaded file."""
+	file_url = args.get("file_url", "").strip()
+	if not file_url:
+		return {"error": "file_url is required"}
+
+	try:
+		from oly_ai.core.file_parser import parse_file
+		result = parse_file(file_url)
+		if "error" in result:
+			return result
+
+		# Truncate for tool response (keep within reasonable size)
+		text = result.get("text", "")
+		truncated = len(text) > 30000
+		if truncated:
+			text = text[:30000] + "\n... [truncated]"
+
+		return {
+			"filename": result.get("filename", ""),
+			"extension": result.get("extension", ""),
+			"content": text,
+			"truncated": truncated or result.get("truncated", False),
+			"pages": result.get("pages"),
+			"rows": result.get("rows"),
+		}
+	except Exception as e:
+		frappe.logger("oly_ai").warning(f"File analysis failed: {e}")
+		return {"error": f"Failed to analyze file: {str(e)}"}
+
+
 def _get_max_records():
 	"""Get max records per query from settings."""
 	try:
@@ -908,7 +1013,8 @@ def get_available_tools(user=None, mode="ask"):
 	settings = frappe.get_cached_doc("AI Settings")
 
 	# Read-only tools (always available in agent/execute modes if data queries enabled)
-	read_tools = ["search_documents", "get_document", "count_documents", "get_report", "get_list_summary"]
+	read_tools = ["search_documents", "get_document", "count_documents", "get_report", "get_list_summary",
+	              "web_search", "analyze_file"]
 	write_tools = ["create_document", "update_document", "submit_document", "cancel_document",
 	               "delete_document", "send_communication", "add_comment"]
 

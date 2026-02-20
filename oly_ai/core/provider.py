@@ -59,7 +59,7 @@ class LLMProvider:
 		start_time = time.time()
 
 		if self.provider_type == "Anthropic":
-			result = self._call_anthropic(messages, model, max_tokens, temperature)
+			result = self._call_anthropic(messages, model, max_tokens, temperature, tools)
 		else:
 			# OpenAI and Custom (OpenAI-compatible) use the same API
 			result = self._call_openai_compatible(
@@ -182,8 +182,12 @@ class LLMProvider:
 		except Exception as e:
 			frappe.throw(f"AI request failed: {str(e)}")
 
-	def _call_anthropic(self, messages, model, max_tokens, temperature):
-		"""Call Anthropic Claude API (different format from OpenAI)."""
+	def _call_anthropic(self, messages, model, max_tokens, temperature, tools=None):
+		"""Call Anthropic Claude API (different format from OpenAI).
+
+		Supports tool calling (function calling) with Anthropic's native format.
+		Converts OpenAI-format tool definitions to Anthropic format automatically.
+		"""
 		url = f"{self.base_url.rstrip('/')}/v1/messages"
 
 		headers = {
@@ -198,8 +202,59 @@ class LLMProvider:
 		for msg in messages:
 			if msg["role"] == "system":
 				system_text += msg["content"] + "\n"
+			elif msg["role"] == "tool":
+				# Convert OpenAI tool result format to Anthropic
+				conversation.append({
+					"role": "user",
+					"content": [{
+						"type": "tool_result",
+						"tool_use_id": msg.get("tool_call_id", ""),
+						"content": msg.get("content", ""),
+					}],
+				})
+			elif msg["role"] == "assistant" and msg.get("tool_calls"):
+				# Convert OpenAI assistant tool_calls to Anthropic content blocks
+				content_blocks = []
+				if msg.get("content"):
+					content_blocks.append({"type": "text", "text": msg["content"]})
+				for tc in msg["tool_calls"]:
+					try:
+						args = json.loads(tc["function"]["arguments"]) if isinstance(tc["function"]["arguments"], str) else tc["function"]["arguments"]
+					except (json.JSONDecodeError, TypeError):
+						args = {}
+					content_blocks.append({
+						"type": "tool_use",
+						"id": tc["id"],
+						"name": tc["function"]["name"],
+						"input": args,
+					})
+				conversation.append({"role": "assistant", "content": content_blocks})
 			else:
-				conversation.append(msg)
+				# Handle multipart content (vision) for Anthropic
+				content = msg.get("content", "")
+				if isinstance(content, list):
+					# Convert OpenAI multipart to Anthropic format
+					anthropic_content = []
+					for part in content:
+						if part.get("type") == "text":
+							anthropic_content.append({"type": "text", "text": part["text"]})
+						elif part.get("type") == "image_url":
+							img_url = part.get("image_url", {}).get("url", "")
+							if img_url.startswith("data:"):
+								# Extract media type and base64 data
+								header, b64_data = img_url.split(",", 1) if "," in img_url else ("", "")
+								media_type = header.split(":")[1].split(";")[0] if ":" in header else "image/png"
+								anthropic_content.append({
+									"type": "image",
+									"source": {
+										"type": "base64",
+										"media_type": media_type,
+										"data": b64_data,
+									},
+								})
+					conversation.append({"role": msg["role"], "content": anthropic_content if anthropic_content else content})
+				else:
+					conversation.append({"role": msg["role"], "content": content})
 
 		payload = {
 			"model": model,
@@ -211,21 +266,50 @@ class LLMProvider:
 		if system_text.strip():
 			payload["system"] = system_text.strip()
 
+		# Convert OpenAI tool definitions to Anthropic format
+		if tools:
+			anthropic_tools = []
+			for t in tools:
+				func = t.get("function", {})
+				anthropic_tools.append({
+					"name": func.get("name", ""),
+					"description": func.get("description", ""),
+					"input_schema": func.get("parameters", {"type": "object", "properties": {}}),
+				})
+			payload["tools"] = anthropic_tools
+
 		try:
 			response = requests.post(url, headers=headers, json=payload, timeout=self.timeout)
 			response.raise_for_status()
 			data = response.json()
 
 			content = ""
+			tool_calls = []
 			for block in data.get("content", []):
 				if block.get("type") == "text":
 					content += block["text"]
+				elif block.get("type") == "tool_use":
+					# Convert Anthropic tool_use to OpenAI tool_calls format
+					tool_calls.append({
+						"id": block["id"],
+						"type": "function",
+						"function": {
+							"name": block["name"],
+							"arguments": json.dumps(block.get("input", {})),
+						},
+					})
 
-			return {
-				"content": content,
+			result = {
+				"content": content if content else None,
 				"tokens_input": data.get("usage", {}).get("input_tokens", 0),
 				"tokens_output": data.get("usage", {}).get("output_tokens", 0),
 			}
+
+			# Only include tool_calls if there are any
+			if tool_calls:
+				result["tool_calls"] = tool_calls
+
+			return result
 		except requests.exceptions.Timeout:
 			frappe.throw(f"AI request timed out after {self.timeout}s. Try again or increase timeout.")
 		except requests.exceptions.HTTPError as e:
@@ -256,6 +340,10 @@ class LLMProvider:
 		model = model or self.default_model
 		max_tokens = max_tokens or self.max_tokens
 		temperature = temperature if temperature is not None else self.temperature
+
+		if self.provider_type == "Anthropic":
+			yield from self._stream_anthropic(messages, model, max_tokens, temperature, tools)
+			return
 
 		url = f"{self.base_url.rstrip('/')}/chat/completions"
 
@@ -376,6 +464,186 @@ class LLMProvider:
 			except Exception:
 				error_detail = str(e)
 			raise Exception(f"AI API error: {error_detail}")
+
+	def _stream_anthropic(self, messages, model, max_tokens, temperature, tools=None):
+		"""Stream Anthropic Claude API responses using server-sent events.
+
+		Yields the same format as chat_stream for consistent handling:
+		  {"type": "chunk", "content": "..."}
+		  {"type": "tool_call_delta", "delta": [...]}
+		  {"type": "usage", "usage": {...}}
+		"""
+		url = f"{self.base_url.rstrip('/')}/v1/messages"
+
+		headers = {
+			"Content-Type": "application/json",
+			"x-api-key": self.api_key,
+			"anthropic-version": "2023-06-01",
+		}
+
+		# Reuse the same message conversion as _call_anthropic
+		system_text = ""
+		conversation = []
+		for msg in messages:
+			if msg["role"] == "system":
+				system_text += msg["content"] + "\n"
+			elif msg["role"] == "tool":
+				conversation.append({
+					"role": "user",
+					"content": [{
+						"type": "tool_result",
+						"tool_use_id": msg.get("tool_call_id", ""),
+						"content": msg.get("content", ""),
+					}],
+				})
+			elif msg["role"] == "assistant" and msg.get("tool_calls"):
+				content_blocks = []
+				if msg.get("content"):
+					content_blocks.append({"type": "text", "text": msg["content"]})
+				for tc in msg["tool_calls"]:
+					try:
+						args = json.loads(tc["function"]["arguments"]) if isinstance(tc["function"]["arguments"], str) else tc["function"]["arguments"]
+					except (json.JSONDecodeError, TypeError):
+						args = {}
+					content_blocks.append({
+						"type": "tool_use",
+						"id": tc["id"],
+						"name": tc["function"]["name"],
+						"input": args,
+					})
+				conversation.append({"role": "assistant", "content": content_blocks})
+			else:
+				content = msg.get("content", "")
+				if isinstance(content, list):
+					anthropic_content = []
+					for part in content:
+						if part.get("type") == "text":
+							anthropic_content.append({"type": "text", "text": part["text"]})
+						elif part.get("type") == "image_url":
+							img_url = part.get("image_url", {}).get("url", "")
+							if img_url.startswith("data:"):
+								header, b64_data = img_url.split(",", 1) if "," in img_url else ("", "")
+								media_type = header.split(":")[1].split(";")[0] if ":" in header else "image/png"
+								anthropic_content.append({
+									"type": "image",
+									"source": {
+										"type": "base64",
+										"media_type": media_type,
+										"data": b64_data,
+									},
+								})
+					conversation.append({"role": msg["role"], "content": anthropic_content if anthropic_content else content})
+				else:
+					conversation.append({"role": msg["role"], "content": content})
+
+		payload = {
+			"model": model,
+			"max_tokens": max_tokens,
+			"temperature": temperature,
+			"top_p": self.top_p,
+			"messages": conversation,
+			"stream": True,
+		}
+		if system_text.strip():
+			payload["system"] = system_text.strip()
+
+		if tools:
+			anthropic_tools = []
+			for t in tools:
+				func = t.get("function", {})
+				anthropic_tools.append({
+					"name": func.get("name", ""),
+					"description": func.get("description", ""),
+					"input_schema": func.get("parameters", {"type": "object", "properties": {}}),
+				})
+			payload["tools"] = anthropic_tools
+
+		try:
+			response = requests.post(
+				url, headers=headers, json=payload,
+				timeout=self.timeout, stream=True,
+			)
+			response.raise_for_status()
+		except requests.exceptions.HTTPError as e:
+			error_detail = ""
+			try:
+				error_detail = e.response.json().get("error", {}).get("message", str(e))
+			except Exception:
+				error_detail = str(e)
+			raise Exception(f"Anthropic API error: {error_detail}")
+		except requests.exceptions.Timeout:
+			raise Exception(f"AI request timed out after {self.timeout}s")
+
+		# Track tool call accumulation during streaming
+		current_tool_id = None
+		current_tool_name = None
+		current_tool_input = ""
+		usage_data = {}
+
+		for line in response.iter_lines():
+			if not line:
+				continue
+			line_str = line.decode("utf-8")
+			if not line_str.startswith("data: "):
+				continue
+			data_str = line_str[6:].strip()
+			if not data_str:
+				continue
+
+			try:
+				event = json.loads(data_str)
+			except json.JSONDecodeError:
+				continue
+
+			event_type = event.get("type", "")
+
+			if event_type == "content_block_start":
+				block = event.get("content_block", {})
+				if block.get("type") == "tool_use":
+					current_tool_id = block.get("id", "")
+					current_tool_name = block.get("name", "")
+					current_tool_input = ""
+
+			elif event_type == "content_block_delta":
+				delta = event.get("delta", {})
+				if delta.get("type") == "text_delta":
+					yield {"type": "chunk", "content": delta.get("text", "")}
+				elif delta.get("type") == "input_json_delta":
+					current_tool_input += delta.get("partial_json", "")
+
+			elif event_type == "content_block_stop":
+				if current_tool_id and current_tool_name:
+					# Emit complete tool call in OpenAI format
+					yield {
+						"type": "tool_call_delta",
+						"delta": [{
+							"index": 0,
+							"id": current_tool_id,
+							"type": "function",
+							"function": {
+								"name": current_tool_name,
+								"arguments": current_tool_input,
+							},
+						}],
+					}
+					current_tool_id = None
+					current_tool_name = None
+					current_tool_input = ""
+
+			elif event_type == "message_delta":
+				# Usage info comes in message_delta
+				u = event.get("usage", {})
+				if u:
+					usage_data["completion_tokens"] = u.get("output_tokens", 0)
+
+			elif event_type == "message_start":
+				u = event.get("message", {}).get("usage", {})
+				if u:
+					usage_data["prompt_tokens"] = u.get("input_tokens", 0)
+
+			elif event_type == "message_stop":
+				if usage_data:
+					yield {"type": "usage", "usage": usage_data}
 
 	def get_embeddings(self, texts, model=None):
 		"""Get embeddings for a list of texts. Returns list of embedding vectors.

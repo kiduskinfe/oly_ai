@@ -33,6 +33,7 @@
   "column_break_exec",
   "dangerous_actions_warning",
   "max_records_per_query",
+  "max_tool_rounds",
   "budget_section",
   "monthly_budget_usd",
   "daily_request_limit",
@@ -234,6 +235,13 @@
    "fieldtype": "Int",
    "label": "Max Records per Query",
    "description": "Maximum number of records the AI can fetch in a single query"
+  },
+  {
+   "default": "10",
+   "fieldname": "max_tool_rounds",
+   "fieldtype": "Int",
+   "label": "Max Tool Rounds per Request",
+   "description": "Maximum number of tool-call rounds the AI can perform per request (1-25). Higher = more thorough but slower."
   },
   {
    "fieldname": "budget_section",
