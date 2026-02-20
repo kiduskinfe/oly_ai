@@ -239,6 +239,15 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 		start_time = time.time()
 		requested_model = model
 
+		# ── PII masking — strip sensitive data before sending to provider ──
+		try:
+			from oly_ai.core.pii_filter import filter_messages_pii
+			llm_messages, pii_count = filter_messages_pii(llm_messages)
+			if pii_count > 0:
+				frappe.logger("oly_ai").info(f"PII filter: masked {pii_count} items in stream")
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"PII filter skipped: {e}")
+
 		# If tools are available, we can't stream the tool-calling loop easily.
 		# Fall back to non-streaming for tool calling rounds, stream the final response.
 		if tools:

@@ -490,14 +490,16 @@ class TestConfigurableToolRounds(FrappeTestCase):
 		self.assertEqual(field.fieldtype, "Int")
 
 	def test_tool_definitions_include_new_tools(self):
-		"""TOOL_DEFINITIONS includes web_search and analyze_file."""
+		"""TOOL_DEFINITIONS includes all new tools."""
 		from oly_ai.core.tools import TOOL_DEFINITIONS
 		tool_names = [t["function"]["name"] for t in TOOL_DEFINITIONS]
 		self.assertIn("web_search", tool_names)
 		self.assertIn("analyze_file", tool_names)
+		self.assertIn("read_webpage", tool_names)
+		self.assertIn("run_code", tool_names)
 
 	def test_get_available_tools_includes_new_tools_in_agent_mode(self):
-		"""web_search and analyze_file are available in agent mode."""
+		"""All new tools are available in agent mode."""
 		from oly_ai.core.tools import get_available_tools
 		tools = get_available_tools(user="Administrator", mode="agent")
 		tool_names = [t["function"]["name"] for t in tools]
@@ -505,3 +507,266 @@ class TestConfigurableToolRounds(FrappeTestCase):
 		if "search_documents" in tool_names:  # Only if data queries enabled
 			self.assertIn("web_search", tool_names)
 			self.assertIn("analyze_file", tool_names)
+			self.assertIn("read_webpage", tool_names)
+			self.assertIn("run_code", tool_names)
+
+
+class TestWebReader(FrappeTestCase):
+	"""Tests for web_reader.py."""
+
+	def test_empty_url(self):
+		"""Empty URL returns error."""
+		from oly_ai.core.web_reader import read_webpage
+		result = read_webpage("")
+		self.assertIn("error", result)
+
+	def test_blocked_internal_url(self):
+		"""Localhost URLs are blocked."""
+		from oly_ai.core.web_reader import read_webpage
+		result = read_webpage("http://localhost/admin")
+		self.assertIn("error", result)
+		self.assertIn("internal", result["error"].lower())
+
+	def test_blocked_metadata_url(self):
+		"""Cloud metadata endpoint is blocked."""
+		from oly_ai.core.web_reader import read_webpage
+		result = read_webpage("http://169.254.169.254/latest/meta-data/")
+		self.assertIn("error", result)
+
+	def test_blocked_binary_extension(self):
+		"""Binary file URLs are blocked."""
+		from oly_ai.core.web_reader import read_webpage
+		result = read_webpage("https://example.com/malware.exe")
+		self.assertIn("error", result)
+
+	def test_read_webpage_tool_handler(self):
+		"""read_webpage tool handler works."""
+		from oly_ai.core.tools import _tool_read_webpage
+		result = _tool_read_webpage({"url": ""}, "Administrator")
+		self.assertIn("error", result)
+
+
+class TestRunCode(FrappeTestCase):
+	"""Tests for sandboxed code execution."""
+
+	def test_simple_calculation(self):
+		"""Simple math calculation works."""
+		from oly_ai.core.tools import _tool_run_code
+		result = _tool_run_code({"code": "print(2 + 2)"}, "Administrator")
+		self.assertEqual(result.get("status"), "success")
+		self.assertEqual(result.get("output"), "4")
+
+	def test_math_import(self):
+		"""Math module is available."""
+		from oly_ai.core.tools import _tool_run_code
+		result = _tool_run_code({"code": "print(math.sqrt(144))"}, "Administrator")
+		self.assertEqual(result.get("status"), "success")
+		self.assertIn("12", result.get("output", ""))
+
+	def test_blocked_os_import(self):
+		"""os module is blocked."""
+		from oly_ai.core.tools import _tool_run_code
+		result = _tool_run_code({"code": "import os\nprint(os.listdir('/'))"}, "Administrator")
+		self.assertIn("error", result)
+		self.assertIn("Blocked", result.get("error", ""))
+
+	def test_blocked_subprocess(self):
+		"""subprocess is blocked."""
+		from oly_ai.core.tools import _tool_run_code
+		result = _tool_run_code({"code": "import subprocess\nsubprocess.run(['ls'])"}, "Administrator")
+		self.assertIn("error", result)
+
+	def test_blocked_frappe(self):
+		"""frappe import is blocked."""
+		from oly_ai.core.tools import _tool_run_code
+		result = _tool_run_code({"code": "import frappe\nprint(frappe.db.sql('SELECT 1'))"}, "Administrator")
+		self.assertIn("error", result)
+
+	def test_blocked_open(self):
+		"""open() is blocked."""
+		from oly_ai.core.tools import _tool_run_code
+		result = _tool_run_code({"code": "f = open('/etc/passwd')\nprint(f.read())"}, "Administrator")
+		self.assertIn("error", result)
+
+	def test_empty_code(self):
+		"""Empty code returns error."""
+		from oly_ai.core.tools import _tool_run_code
+		result = _tool_run_code({"code": ""}, "Administrator")
+		self.assertIn("error", result)
+
+	def test_statistics_module(self):
+		"""statistics module works."""
+		from oly_ai.core.tools import _tool_run_code
+		result = _tool_run_code({"code": "data = [10, 20, 30, 40]\nprint(statistics.mean(data))"}, "Administrator")
+		self.assertEqual(result.get("status"), "success")
+		self.assertIn("25", result.get("output", ""))
+
+
+class TestPIIFilter(FrappeTestCase):
+	"""Tests for PII detection and masking."""
+
+	def test_credit_card_masking(self):
+		"""Credit card numbers are masked."""
+		from oly_ai.core.pii_filter import mask_pii
+		text = "My card is 4111-1111-1111-1111 please process"
+		masked, detections = mask_pii(text)
+		self.assertNotIn("4111-1111-1111-1111", masked)
+		self.assertIn("****-****-****-1111", masked)
+		self.assertTrue(any(d["type"] == "credit_card" for d in detections))
+
+	def test_ssn_masking(self):
+		"""SSN patterns are masked."""
+		from oly_ai.core.pii_filter import mask_pii
+		text = "SSN: 123-45-6789"
+		masked, detections = mask_pii(text)
+		self.assertNotIn("123-45-6789", masked)
+		self.assertIn("***-**-****", masked)
+
+	def test_password_masking(self):
+		"""Password values in text are masked."""
+		from oly_ai.core.pii_filter import mask_pii
+		text = "password: s3cret123 and api_key=xyz789abc"
+		masked, detections = mask_pii(text)
+		self.assertNotIn("s3cret123", masked)
+		self.assertNotIn("xyz789abc", masked)
+		self.assertTrue(len(detections) >= 2)
+
+	def test_normal_text_unchanged(self):
+		"""Normal text without PII is not modified."""
+		from oly_ai.core.pii_filter import mask_pii
+		text = "Please show me the sales report for January 2026"
+		masked, detections = mask_pii(text)
+		self.assertEqual(text, masked)
+		self.assertEqual(len(detections), 0)
+
+	def test_filter_messages(self):
+		"""filter_messages_pii processes message array."""
+		from oly_ai.core.pii_filter import filter_messages_pii
+		messages = [
+			{"role": "user", "content": "My card: 4111-1111-1111-1111"},
+			{"role": "assistant", "content": "I'll look into that."},
+		]
+		filtered, count = filter_messages_pii(messages)
+		self.assertEqual(len(filtered), 2)
+		self.assertNotIn("4111-1111-1111-1111", filtered[0]["content"])
+		self.assertGreater(count, 0)
+
+	def test_sensitive_fields_masking(self):
+		"""Sensitive document fields are masked."""
+		from oly_ai.core.pii_filter import mask_sensitive_fields
+		data = {"name": "Test", "password": "secret123", "bank_account": "1234567890", "amount": 500}
+		cleaned, masked_fields = mask_sensitive_fields(data)
+		self.assertEqual(cleaned["password"], "****")
+		self.assertEqual(cleaned["bank_account"], "****")
+		self.assertEqual(cleaned["amount"], 500)
+		self.assertIn("password", masked_fields)
+
+	def test_luhn_validation(self):
+		"""Luhn algorithm correctly validates real card numbers."""
+		from oly_ai.core.pii_filter import _is_valid_luhn
+		self.assertTrue(_is_valid_luhn("4111111111111111"))  # Visa test card
+		self.assertFalse(_is_valid_luhn("1234567890123456"))  # Invalid
+
+	def test_ethiopian_tin_masking(self):
+		"""Ethiopian TIN numbers are masked."""
+		from oly_ai.core.pii_filter import mask_pii
+		text = "Company TIN: 1234567890"
+		masked, detections = mask_pii(text)
+		# This matches the TIN pattern with "TIN:" prefix
+		self.assertIn("TIN-**********", masked)
+
+
+class TestConversationExport(FrappeTestCase):
+	"""Tests for conversation export."""
+
+	def test_export_markdown_format(self):
+		"""Export produces valid markdown."""
+		from oly_ai.api.chat import export_conversation
+
+		# Create a test session with a message (child table)
+		session = frappe.get_doc({
+			"doctype": "AI Chat Session",
+			"title": "Test Export Session",
+			"owner": "Administrator",
+			"messages": [{
+				"role": "user",
+				"content": "Hello AI",
+			}],
+		})
+		session.flags.ignore_permissions = True
+		session.insert()
+		frappe.db.commit()
+
+		try:
+			result = export_conversation(session.name, format="markdown")
+			self.assertIn("filename", result)
+			self.assertIn("content", result)
+			self.assertTrue(result["filename"].endswith(".md"))
+			self.assertIn("Test Export Session", result["content"])
+			self.assertIn("Hello AI", result["content"])
+			self.assertEqual(result["message_count"], 1)
+		finally:
+			frappe.delete_doc("AI Chat Session", session.name, force=True)
+			frappe.db.commit()
+
+	def test_export_text_format(self):
+		"""Export produces plain text."""
+		from oly_ai.api.chat import export_conversation
+
+		session = frappe.get_doc({
+			"doctype": "AI Chat Session",
+			"title": "Test Text Export",
+			"owner": "Administrator",
+			"messages": [{"role": "user", "content": "Hi"}],
+		})
+		session.flags.ignore_permissions = True
+		session.insert()
+		frappe.db.commit()
+
+		try:
+			result = export_conversation(session.name, format="text")
+			self.assertTrue(result["filename"].endswith(".txt"))
+			self.assertEqual(result["content_type"], "text/plain")
+		finally:
+			frappe.delete_doc("AI Chat Session", session.name, force=True)
+			frappe.db.commit()
+
+
+class TestHybridRAG(FrappeTestCase):
+	"""Tests for hybrid BM25+vector RAG."""
+
+	def test_tokenizer(self):
+		"""Tokenizer correctly splits and filters."""
+		from oly_ai.core.rag.retriever import _tokenize
+		tokens = _tokenize("Hello World! This is a test-123.")
+		self.assertIn("hello", tokens)
+		self.assertIn("world", tokens)
+		self.assertIn("test", tokens)
+		self.assertIn("123", tokens)
+		# Single char tokens should be filtered
+		self.assertNotIn("a", tokens)
+
+	def test_bm25_loader(self):
+		"""BM25 class loads successfully."""
+		from oly_ai.core.rag.retriever import _get_bm25
+		BM25Class = _get_bm25()
+		self.assertIsNotNone(BM25Class, "rank_bm25 should be installed")
+
+	def test_bm25_scoring(self):
+		"""BM25 produces scores for matching documents."""
+		from oly_ai.core.rag.retriever import _get_bm25, _tokenize
+		BM25Class = _get_bm25()
+		if BM25Class is None:
+			self.skipTest("rank_bm25 not installed")
+
+		corpus = [
+			_tokenize("Sales Invoice for Customer A total amount 5000"),
+			_tokenize("Employee leave application pending approval"),
+			_tokenize("Purchase Order for supplier B delivery date March"),
+		]
+		bm25 = BM25Class(corpus)
+		query = _tokenize("sales invoice total amount")
+		scores = bm25.get_scores(query)
+		# First doc should score highest
+		self.assertGreater(scores[0], scores[1])
+		self.assertGreater(scores[0], scores[2])

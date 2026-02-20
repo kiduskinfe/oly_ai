@@ -53,11 +53,21 @@ def check_budget(user=None):
 		if current_spend >= settings.monthly_budget_usd:
 			return False, f"Monthly AI budget of ${settings.monthly_budget_usd} exceeded (${current_spend:.2f} spent)"
 
-	# Check daily per-user limit
-	if settings.daily_request_limit and settings.daily_request_limit > 0:
-		user_requests = get_user_requests_today(user)
-		if user_requests >= settings.daily_request_limit:
-			return False, f"Daily AI request limit of {settings.daily_request_limit} reached ({user_requests} used)"
+	# Check daily per-user limit (global default)
+	global_daily_limit = settings.daily_request_limit or 0
+	user_requests = get_user_requests_today(user)
+
+	# Check per-user daily limit override from Access Level
+	try:
+		from oly_ai.core.access_control import check_user_access
+		access = check_user_access(user)
+		per_user_limit = access.get("max_daily_requests", 0)
+		effective_limit = per_user_limit if per_user_limit > 0 else global_daily_limit
+	except Exception:
+		effective_limit = global_daily_limit
+
+	if effective_limit > 0 and user_requests >= effective_limit:
+		return False, f"Daily AI request limit of {effective_limit} reached ({user_requests} used)"
 
 	return True, ""
 

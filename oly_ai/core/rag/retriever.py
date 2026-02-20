@@ -1,17 +1,19 @@
 # Copyright (c) 2026, OLY Technologies and contributors
 # RAG Retriever — Finds the most relevant document chunks for a query.
-# Uses numpy-accelerated cosine similarity on embeddings stored in MariaDB.
+# Uses hybrid BM25 + numpy-accelerated cosine similarity on embeddings stored in MariaDB.
 # Supports keyword pre-filtering to reduce the search space for large indexes.
 
 import json
+import re
 
 import frappe
 from frappe import _
 
 from oly_ai.core.provider import LLMProvider
 
-# Cache for numpy import (lazy load)
+# Cache for lazy imports
 _np = None
+_bm25_class = None
 
 
 def _get_numpy():
@@ -21,6 +23,18 @@ def _get_numpy():
 		import numpy as np
 		_np = np
 	return _np
+
+
+def _get_bm25():
+	"""Lazy-load rank_bm25 for BM25 scoring."""
+	global _bm25_class
+	if _bm25_class is None:
+		try:
+			from rank_bm25 import BM25Okapi
+			_bm25_class = BM25Okapi
+		except ImportError:
+			_bm25_class = False  # Sentinel: not available
+	return _bm25_class if _bm25_class is not False else None
 
 
 def _extract_keywords(query, min_length=3, max_keywords=8):
@@ -61,13 +75,15 @@ def _extract_keywords(query, min_length=3, max_keywords=8):
 def retrieve(query, top_k=5, min_score=0.7, doctype_filter=None):
 	"""Retrieve the most relevant chunks for a query.
 
-	Uses numpy vectorized cosine similarity for fast scoring.
+	Uses hybrid BM25 + numpy vectorized cosine similarity for scoring.
+	BM25 handles keyword relevance, cosine similarity handles semantic relevance.
+	Final score = 0.4 * BM25_normalized + 0.6 * cosine_similarity.
 	Applies keyword pre-filtering when the index is large (>500 chunks).
 
 	Args:
 		query: The user's question or search text
 		top_k: Number of top results to return
-		min_score: Minimum cosine similarity threshold
+		min_score: Minimum score threshold (applied to hybrid score)
 		doctype_filter: Optional doctype to restrict search to
 
 	Returns:
@@ -133,11 +149,10 @@ def retrieve(query, top_k=5, min_score=0.7, doctype_filter=None):
 		db_filters["reference_doctype"] = doctype_filter
 
 	if keyword_filtered_names is not None and len(keyword_filtered_names) > 0:
-		# Use keyword-filtered subset
 		db_filters["name"] = ("in", keyword_filtered_names)
 		limit = len(keyword_filtered_names)
 	else:
-		limit = 10000  # Reasonable limit for full scan
+		limit = 10000
 
 	chunks = frappe.get_all(
 		"AI Document Index",
@@ -164,34 +179,58 @@ def retrieve(query, top_k=5, min_score=0.7, doctype_filter=None):
 	if not valid_chunks:
 		return []
 
-	# Vectorized cosine similarity using numpy
-	embedding_matrix = np.array(embedding_list, dtype=np.float32)  # shape: (N, dim)
-
-	# Compute norms
+	# ── Cosine similarity (semantic) ──
+	embedding_matrix = np.array(embedding_list, dtype=np.float32)
 	query_norm = np.linalg.norm(query_vec)
 	if query_norm == 0:
 		return []
 
-	chunk_norms = np.linalg.norm(embedding_matrix, axis=1)  # shape: (N,)
-
-	# Avoid division by zero
+	chunk_norms = np.linalg.norm(embedding_matrix, axis=1)
 	nonzero_mask = chunk_norms > 0
 	if not np.any(nonzero_mask):
 		return []
 
-	# Compute dot products and similarities
-	dots = embedding_matrix[nonzero_mask] @ query_vec  # shape: (M,)
-	similarities = dots / (chunk_norms[nonzero_mask] * query_norm)  # shape: (M,)
+	cosine_scores = np.zeros(len(valid_chunks), dtype=np.float32)
+	dots = embedding_matrix[nonzero_mask] @ query_vec
+	cosine_scores[nonzero_mask] = dots / (chunk_norms[nonzero_mask] * query_norm)
+
+	# ── BM25 scoring (keyword) ──
+	BM25Class = _get_bm25()
+	bm25_scores = np.zeros(len(valid_chunks), dtype=np.float32)
+
+	if BM25Class is not None:
+		try:
+			# Tokenize chunks for BM25
+			tokenized_corpus = [_tokenize(c.chunk_text) for c in valid_chunks]
+			query_tokens = _tokenize(query)
+
+			if tokenized_corpus and query_tokens:
+				bm25 = BM25Class(tokenized_corpus)
+				raw_bm25 = np.array(bm25.get_scores(query_tokens), dtype=np.float32)
+				# Normalize BM25 scores to 0-1 range
+				bm25_max = raw_bm25.max()
+				if bm25_max > 0:
+					bm25_scores = raw_bm25 / bm25_max
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"BM25 scoring failed, using cosine only: {e}")
+
+	# ── Hybrid scoring ──
+	# Weight: 60% semantic (cosine), 40% keyword (BM25)
+	SEMANTIC_WEIGHT = 0.6
+	KEYWORD_WEIGHT = 0.4
+
+	if np.any(bm25_scores > 0):
+		hybrid_scores = SEMANTIC_WEIGHT * cosine_scores + KEYWORD_WEIGHT * bm25_scores
+	else:
+		hybrid_scores = cosine_scores  # Fallback to pure cosine if BM25 failed
 
 	# Filter by min_score and get top_k
-	score_mask = similarities >= min_score
+	score_mask = hybrid_scores >= min_score
 	if not np.any(score_mask):
 		return []
 
-	# Get indices of valid chunks that pass both masks
-	nonzero_indices = np.where(nonzero_mask)[0]
-	passing_indices = nonzero_indices[score_mask]
-	passing_scores = similarities[score_mask]
+	passing_indices = np.where(score_mask)[0]
+	passing_scores = hybrid_scores[score_mask]
 
 	# Sort by score descending, take top_k
 	if len(passing_scores) > top_k:
@@ -212,6 +251,15 @@ def retrieve(query, top_k=5, min_score=0.7, doctype_filter=None):
 		})
 
 	return scored
+
+
+def _tokenize(text):
+	"""Simple tokenizer for BM25 scoring."""
+	if not text:
+		return []
+	# Lower-case, split on non-alphanum, filter short tokens
+	tokens = re.findall(r"[a-z0-9]+", text.lower())
+	return [t for t in tokens if len(t) >= 2]
 
 
 def build_rag_context(query, top_k=5, min_score=0.7):

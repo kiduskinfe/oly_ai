@@ -364,6 +364,40 @@ TOOL_DEFINITIONS = [
 			},
 		},
 	},
+	{
+		"type": "function",
+		"function": {
+			"name": "read_webpage",
+			"description": "Fetch and read the content of a web page URL. Returns the page title and clean extracted text. Use this after web_search to read the full content of a result, or when the user provides a URL to analyze.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"url": {
+						"type": "string",
+						"description": "The full URL to read, e.g. 'https://example.com/article'",
+					},
+				},
+				"required": ["url"],
+			},
+		},
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "run_code",
+			"description": "Execute Python code in a sandboxed environment. Use this for calculations, data analysis, formatting, or any task that benefits from programmatic execution. The code runs with a 10-second timeout and limited imports (math, statistics, datetime, json, re, collections, itertools, decimal, fractions). Print output to return results.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"code": {
+						"type": "string",
+						"description": "Python code to execute. Use print() for output.",
+					},
+				},
+				"required": ["code"],
+			},
+		},
+	},
 ]
 
 def execute_tool(tool_name, arguments, user=None):
@@ -394,6 +428,8 @@ def execute_tool(tool_name, arguments, user=None):
 		"add_comment": _tool_add_comment,
 		"web_search": _tool_web_search,
 		"analyze_file": _tool_analyze_file,
+		"read_webpage": _tool_read_webpage,
+		"run_code": _tool_run_code,
 	}
 
 	handler = tool_map.get(tool_name)
@@ -991,6 +1027,106 @@ def _tool_analyze_file(args, user):
 		return {"error": f"Failed to analyze file: {str(e)}"}
 
 
+def _tool_read_webpage(args, user):
+	"""Fetch and read a web page URL."""
+	url = args.get("url", "").strip()
+	if not url:
+		return {"error": "URL is required"}
+
+	try:
+		from oly_ai.core.web_reader import read_webpage
+		return read_webpage(url)
+	except Exception as e:
+		frappe.logger("oly_ai").warning(f"Web page read failed: {e}")
+		return {"error": f"Failed to read page: {str(e)}"}
+
+
+def _tool_run_code(args, user):
+	"""Execute Python code in a sandboxed subprocess."""
+	code = args.get("code", "").strip()
+	if not code:
+		return {"error": "Code is required"}
+
+	# Safety: max code length
+	if len(code) > 10000:
+		return {"error": "Code too long (max 10,000 characters)"}
+
+	# Block dangerous patterns before execution
+	dangerous_patterns = [
+		"import os", "import sys", "import subprocess", "import shutil",
+		"__import__", "eval(", "exec(", "compile(",
+		"open(", "os.system", "os.popen", "os.exec",
+		"subprocess.", "shutil.", "pathlib.",
+		"frappe.", "import frappe",
+		"requests.", "import requests",
+		"socket.", "import socket",
+	]
+	code_lower = code.lower()
+	for pattern in dangerous_patterns:
+		if pattern.lower() in code_lower:
+			return {"error": f"Blocked: '{pattern}' is not allowed in sandboxed code execution"}
+
+	try:
+		import subprocess
+		import tempfile
+
+		# Write code to a temp file
+		with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+			# Prepend allowed imports
+			sandbox_code = (
+				"import math, statistics, datetime, json, re, decimal, fractions\n"
+				"from collections import Counter, defaultdict, OrderedDict\n"
+				"from itertools import chain, combinations, permutations, product\n"
+				"from functools import reduce\n"
+				"\n"
+				f"{code}\n"
+			)
+			f.write(sandbox_code)
+			temp_path = f.name
+
+		try:
+			result = subprocess.run(
+				["/home/oly/frappe-bench/env/bin/python", temp_path],
+				capture_output=True,
+				text=True,
+				timeout=10,  # 10 second timeout
+				cwd="/tmp",
+				env={
+					"PATH": "/usr/bin:/bin",
+					"HOME": "/tmp",
+					"PYTHONDONTWRITEBYTECODE": "1",
+				},
+			)
+
+			output = result.stdout.strip()
+			errors = result.stderr.strip()
+
+			if result.returncode != 0:
+				return {
+					"status": "error",
+					"error": errors or f"Process exited with code {result.returncode}",
+					"output": output if output else None,
+				}
+
+			return {
+				"status": "success",
+				"output": output if output else "(no output)",
+				"warnings": errors if errors else None,
+			}
+		finally:
+			import os
+			try:
+				os.unlink(temp_path)
+			except OSError:
+				pass
+
+	except subprocess.TimeoutExpired:
+		return {"error": "Code execution timed out (10 second limit)"}
+	except Exception as e:
+		frappe.logger("oly_ai").warning(f"Code execution failed: {e}")
+		return {"error": f"Execution failed: {str(e)}"}
+
+
 def _get_max_records():
 	"""Get max records per query from settings."""
 	try:
@@ -1014,7 +1150,7 @@ def get_available_tools(user=None, mode="ask"):
 
 	# Read-only tools (always available in agent/execute modes if data queries enabled)
 	read_tools = ["search_documents", "get_document", "count_documents", "get_report", "get_list_summary",
-	              "web_search", "analyze_file"]
+	              "web_search", "analyze_file", "read_webpage", "run_code"]
 	write_tools = ["create_document", "update_document", "submit_document", "cancel_document",
 	               "delete_document", "send_communication", "add_comment"]
 

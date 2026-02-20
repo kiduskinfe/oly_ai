@@ -679,6 +679,15 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 	try:
 		provider = LLMProvider(settings)
 
+		# ── PII masking — strip sensitive data before sending to provider ──
+		try:
+			from oly_ai.core.pii_filter import filter_messages_pii
+			llm_messages, pii_count = filter_messages_pii(llm_messages)
+			if pii_count > 0:
+				frappe.logger("oly_ai").info(f"PII filter: masked {pii_count} items before provider call")
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"PII filter skipped: {e}")
+
 		# ── Tool calling loop ──
 		# The LLM may call tools, we execute them and feed results back.
 		# Max 5 iterations to prevent infinite loops.
@@ -1716,3 +1725,77 @@ def _extract_doctype_mentions(message):
 	doctype_only -= specific_doctypes
 
 	return list(doctype_only), specific_docs
+
+
+@frappe.whitelist()
+def export_conversation(session_name, format="markdown"):
+	"""Export a chat conversation as Markdown or plain text.
+
+	Args:
+		session_name: The AI Chat Session name
+		format: 'markdown' (default) or 'text'
+
+	Returns:
+		dict: {filename, content, content_type}
+	"""
+	user = frappe.session.user
+	session = frappe.get_doc("AI Chat Session", session_name)
+
+	# Permission check: owner or shared with
+	if session.owner != user and user != "Administrator":
+		shared = frappe.db.exists("AI Chat Shared User", {
+			"parent": session_name,
+			"user": user,
+		})
+		if not shared:
+			frappe.throw(_("You don't have access to this conversation"), frappe.PermissionError)
+
+	messages = frappe.get_all(
+		"AI Chat Message",
+		filters={"parent": session_name, "parenttype": "AI Chat Session"},
+		fields=["role", "content", "model", "creation"],
+		order_by="creation asc",
+	)
+
+	title = session.title or session.name
+	created = session.creation.strftime("%Y-%m-%d %H:%M") if session.creation else ""
+
+	if format == "markdown":
+		lines = [f"# {title}\n", f"*Exported on {frappe.utils.now_datetime().strftime('%Y-%m-%d %H:%M')}*\n"]
+		if created:
+			lines.append(f"*Session created: {created}*\n")
+		lines.append(f"---\n")
+
+		for msg in messages:
+			role_label = {"user": "**You**", "assistant": "**AI**", "system": "*System*"}.get(msg.role, msg.role)
+			timestamp = msg.creation.strftime("%H:%M") if msg.creation else ""
+
+			lines.append(f"\n### {role_label} {f'({timestamp})' if timestamp else ''}\n")
+
+			if msg.content:
+				lines.append(f"{msg.content}\n")
+
+		content = "\n".join(lines)
+		filename = f"{title.replace(' ', '_')[:50]}_export.md"
+		content_type = "text/markdown"
+	else:
+		lines = [f"{title}", f"{'=' * len(title)}", f"Exported: {frappe.utils.now_datetime().strftime('%Y-%m-%d %H:%M')}", ""]
+
+		for msg in messages:
+			role_label = {"user": "You", "assistant": "AI", "system": "System"}.get(msg.role, msg.role)
+			timestamp = msg.creation.strftime("%H:%M") if msg.creation else ""
+			lines.append(f"[{role_label}] {f'({timestamp})' if timestamp else ''}")
+			if msg.content:
+				lines.append(msg.content)
+			lines.append("")
+
+		content = "\n".join(lines)
+		filename = f"{title.replace(' ', '_')[:50]}_export.txt"
+		content_type = "text/plain"
+
+	return {
+		"filename": filename,
+		"content": content,
+		"content_type": content_type,
+		"message_count": len(messages),
+	}
