@@ -398,6 +398,23 @@ TOOL_DEFINITIONS = [
 			},
 		},
 	},
+	{
+		"type": "function",
+		"function": {
+			"name": "analyze_sentiment",
+			"description": "Analyze the sentiment and urgency of a text message. Use this to assess customer emails, feedback, support tickets, or any communication for positive/negative/neutral tone and urgency level. Returns sentiment classification, confidence score, urgency level, and key signal words detected.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"text": {
+						"type": "string",
+						"description": "The text to analyze for sentiment and urgency",
+					},
+				},
+				"required": ["text"],
+			},
+		},
+	},
 ]
 
 def execute_tool(tool_name, arguments, user=None):
@@ -430,6 +447,7 @@ def execute_tool(tool_name, arguments, user=None):
 		"analyze_file": _tool_analyze_file,
 		"read_webpage": _tool_read_webpage,
 		"run_code": _tool_run_code,
+		"analyze_sentiment": _tool_analyze_sentiment,
 	}
 
 	handler = tool_map.get(tool_name)
@@ -1127,6 +1145,22 @@ def _tool_run_code(args, user):
 		return {"error": f"Execution failed: {str(e)}"}
 
 
+def _tool_analyze_sentiment(args, user):
+	"""Analyze sentiment and urgency of text."""
+	text = args.get("text", "").strip()
+	if not text:
+		return {"error": "Text is required"}
+
+	try:
+		from oly_ai.core.sentiment import analyze_sentiment, get_sentiment_label
+		result = analyze_sentiment(text)
+		result["label"] = get_sentiment_label(result["sentiment"], result["urgency"])
+		return result
+	except Exception as e:
+		frappe.logger("oly_ai").warning(f"Sentiment analysis failed: {e}")
+		return {"error": f"Sentiment analysis failed: {str(e)}"}
+
+
 def _get_max_records():
 	"""Get max records per query from settings."""
 	try:
@@ -1150,7 +1184,7 @@ def get_available_tools(user=None, mode="ask"):
 
 	# Read-only tools (always available in agent/execute modes if data queries enabled)
 	read_tools = ["search_documents", "get_document", "count_documents", "get_report", "get_list_summary",
-	              "web_search", "analyze_file", "read_webpage", "run_code"]
+	              "web_search", "analyze_file", "read_webpage", "run_code", "analyze_sentiment"]
 	write_tools = ["create_document", "update_document", "submit_document", "cancel_document",
 	               "delete_document", "send_communication", "add_comment"]
 

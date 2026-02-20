@@ -50,7 +50,7 @@ def discover_doctypes():
 			"istable": 0,
 			"issingle": 0,
 			"is_virtual": 0,
-			"module": ["not in", ["Core", "Custom", "Email", "Printing", "Website"]],
+			"module": ["not in", ["Core", "Custom", "Email", "Printing"]],
 		},
 		pluck="name",
 		order_by="name asc",

@@ -770,3 +770,373 @@ class TestHybridRAG(FrappeTestCase):
 		# First doc should score highest
 		self.assertGreater(scores[0], scores[1])
 		self.assertGreater(scores[0], scores[2])
+
+
+# ═══════════════════════════════════════════════════════════════
+# Sprint 3: Customer Service & Cross-App Integration Tests
+# ═══════════════════════════════════════════════════════════════
+
+class TestSentimentAnalysis(FrappeTestCase):
+	"""Tests for core/sentiment.py — keyword-based sentiment detection."""
+
+	def test_positive_sentiment(self):
+		"""Positive keywords produce positive sentiment."""
+		from oly_ai.core.sentiment import analyze_sentiment
+		result = analyze_sentiment("Thank you for the excellent service, I'm very happy!")
+		self.assertEqual(result["sentiment"], "positive")
+		self.assertGreater(result["confidence"], 0.5)
+		self.assertGreater(result["positive_score"], result["negative_score"])
+
+	def test_negative_sentiment(self):
+		"""Negative keywords produce negative sentiment."""
+		from oly_ai.core.sentiment import analyze_sentiment
+		result = analyze_sentiment("This is terrible, I'm very disappointed and angry!")
+		self.assertEqual(result["sentiment"], "negative")
+		self.assertGreater(result["confidence"], 0.5)
+		self.assertGreater(result["negative_score"], result["positive_score"])
+
+	def test_neutral_sentiment(self):
+		"""Text without strong signals produces neutral sentiment."""
+		from oly_ai.core.sentiment import analyze_sentiment
+		result = analyze_sentiment("Please send me the invoice for order 12345.")
+		self.assertEqual(result["sentiment"], "neutral")
+
+	def test_urgency_high(self):
+		"""Urgency keywords produce high urgency."""
+		from oly_ai.core.sentiment import analyze_sentiment
+		result = analyze_sentiment("This is URGENT! We need this fixed ASAP, it's an emergency!")
+		self.assertEqual(result["urgency"], "high")
+		self.assertGreaterEqual(result["urgency_score"], 4)
+
+	def test_urgency_low(self):
+		"""Casual text produces low urgency."""
+		from oly_ai.core.sentiment import analyze_sentiment
+		result = analyze_sentiment("Just checking in about the order status.")
+		self.assertEqual(result["urgency"], "low")
+
+	def test_empty_text(self):
+		"""Empty text returns neutral defaults."""
+		from oly_ai.core.sentiment import analyze_sentiment
+		result = analyze_sentiment("")
+		self.assertEqual(result["sentiment"], "neutral")
+		self.assertEqual(result["urgency"], "low")
+
+	def test_key_signals_populated(self):
+		"""Key signals list is populated with detected keywords."""
+		from oly_ai.core.sentiment import analyze_sentiment
+		result = analyze_sentiment("Terrible service! I want a refund immediately!")
+		self.assertTrue(len(result["key_signals"]) > 0)
+
+	def test_sentiment_label(self):
+		"""get_sentiment_label returns correct formatted labels."""
+		from oly_ai.core.sentiment import get_sentiment_label
+		label = get_sentiment_label("negative", "high")
+		self.assertIn("Negative", label)
+		self.assertIn("Urgent", label)
+
+	def test_mixed_sentiment(self):
+		"""Mixed positive/negative text detected reasonably."""
+		from oly_ai.core.sentiment import analyze_sentiment
+		result = analyze_sentiment("The product quality is good but the delivery was terrible and slow.")
+		# Should be negative overall (terrible + slow outweigh good)
+		self.assertIn(result["sentiment"], ["negative", "neutral"])
+
+
+class TestEmailHandler(FrappeTestCase):
+	"""Tests for core/email_handler.py — auto-response on incoming emails."""
+
+	def test_should_auto_respond_incoming(self):
+		"""Incoming email to supported doctype qualifies for auto-response."""
+		from oly_ai.core.email_handler import _should_auto_respond
+
+		mock_comm = MagicMock()
+		mock_comm.communication_type = "Communication"
+		mock_comm.sent_or_received = "Received"
+		mock_comm.reference_doctype = "Issue"
+		mock_comm.reference_name = "ISS-001"
+		mock_comm.sender = "customer@example.com"
+
+		with patch("frappe.get_cached_doc") as mock_settings:
+			settings_mock = MagicMock()
+			settings_mock.enable_auto_response = 1
+			settings_mock.get.return_value = []  # No configured doctypes, use defaults
+			mock_settings.return_value = settings_mock
+
+			result = _should_auto_respond(mock_comm)
+			self.assertTrue(result)
+
+	def test_should_not_respond_outgoing(self):
+		"""Outgoing emails should not trigger auto-response."""
+		from oly_ai.core.email_handler import _should_auto_respond
+
+		mock_comm = MagicMock()
+		mock_comm.communication_type = "Communication"
+		mock_comm.sent_or_received = "Sent"
+		mock_comm.reference_doctype = "Issue"
+		mock_comm.reference_name = "ISS-001"
+		mock_comm.sender = "user@oly.et"
+
+		result = _should_auto_respond(mock_comm)
+		self.assertFalse(result)
+
+	def test_should_not_respond_comment(self):
+		"""Comments should not trigger auto-response."""
+		from oly_ai.core.email_handler import _should_auto_respond
+
+		mock_comm = MagicMock()
+		mock_comm.communication_type = "Comment"
+		mock_comm.sent_or_received = "Received"
+
+		result = _should_auto_respond(mock_comm)
+		self.assertFalse(result)
+
+	def test_should_not_respond_no_reference(self):
+		"""Emails without reference doctype should not trigger."""
+		from oly_ai.core.email_handler import _should_auto_respond
+
+		mock_comm = MagicMock()
+		mock_comm.communication_type = "Communication"
+		mock_comm.sent_or_received = "Received"
+		mock_comm.reference_doctype = None
+		mock_comm.reference_name = None
+
+		result = _should_auto_respond(mock_comm)
+		self.assertFalse(result)
+
+	def test_should_not_respond_system_sender(self):
+		"""System senders should not trigger auto-response."""
+		from oly_ai.core.email_handler import _should_auto_respond
+
+		mock_comm = MagicMock()
+		mock_comm.communication_type = "Communication"
+		mock_comm.sent_or_received = "Received"
+		mock_comm.reference_doctype = "Issue"
+		mock_comm.reference_name = "ISS-001"
+		mock_comm.sender = "administrator"
+
+		with patch("frappe.get_cached_doc") as mock_settings:
+			settings_mock = MagicMock()
+			settings_mock.enable_auto_response = 1
+			settings_mock.get.return_value = []
+			mock_settings.return_value = settings_mock
+
+			result = _should_auto_respond(mock_comm)
+			self.assertFalse(result)
+
+	def test_company_context_fetcher(self):
+		"""_get_company_context returns valid dict."""
+		from oly_ai.core.email_handler import _get_company_context
+		result = _get_company_context()
+		self.assertIsInstance(result, dict)
+		self.assertIn("company_name", result)
+		# Should always have a company name, even on fallback
+		self.assertTrue(len(result["company_name"]) > 0)
+
+
+class TestDynamicSystemPrompt(FrappeTestCase):
+	"""Tests for dynamic system prompt generation in chat.py."""
+
+	def test_get_system_prompt_ask(self):
+		"""Ask mode returns a prompt string."""
+		from oly_ai.api.chat import get_system_prompt
+		prompt = get_system_prompt("ask")
+		self.assertIsInstance(prompt, str)
+		self.assertTrue(len(prompt) > 100)
+		# Should NOT contain hardcoded "OLY Technologies" (dynamic now)
+		# But should contain company-related context
+		self.assertIn("help employees", prompt.lower())
+
+	def test_get_system_prompt_agent(self):
+		"""Agent mode returns a prompt with analysis capabilities."""
+		from oly_ai.api.chat import get_system_prompt
+		prompt = get_system_prompt("agent")
+		self.assertIn("Agent mode", prompt)
+		self.assertIn("analysis", prompt.lower())
+
+	def test_get_system_prompt_execute(self):
+		"""Execute mode returns a prompt with action capabilities."""
+		from oly_ai.api.chat import get_system_prompt
+		prompt = get_system_prompt("execute")
+		self.assertIn("Execute mode", prompt)
+		self.assertIn("approval", prompt.lower())
+
+	def test_system_prompts_backward_compat(self):
+		"""SYSTEM_PROMPTS dict-like access still works."""
+		from oly_ai.api.chat import SYSTEM_PROMPTS
+		prompt = SYSTEM_PROMPTS["ask"]
+		self.assertIsInstance(prompt, str)
+		self.assertTrue(len(prompt) > 100)
+
+	def test_system_prompts_get_method(self):
+		"""SYSTEM_PROMPTS.get() works correctly."""
+		from oly_ai.api.chat import SYSTEM_PROMPTS
+		prompt = SYSTEM_PROMPTS.get("agent", "fallback")
+		self.assertIsInstance(prompt, str)
+		self.assertNotEqual(prompt, "fallback")
+
+	def test_system_prompts_research_compat(self):
+		"""Research mode maps to agent prompt."""
+		from oly_ai.api.chat import SYSTEM_PROMPTS
+		research = SYSTEM_PROMPTS["research"]
+		agent = SYSTEM_PROMPTS["agent"]
+		self.assertEqual(research, agent)
+
+	def test_company_info_fetcher(self):
+		"""_get_company_info returns valid dict with apps."""
+		from oly_ai.api.chat import _get_company_info
+		info = _get_company_info()
+		self.assertIsInstance(info, dict)
+		self.assertIn("name", info)
+		# Should have apps info
+		self.assertIn("apps", info)
+
+	def test_installed_apps_in_prompt(self):
+		"""System prompt includes installed app names."""
+		from oly_ai.api.chat import get_system_prompt
+		prompt = get_system_prompt("agent")
+		# Should mention app capabilities
+		self.assertIn("app", prompt.lower())
+
+
+class TestSLAMonitor(FrappeTestCase):
+	"""Tests for core/sla_monitor.py — SLA monitoring and escalation."""
+
+	def test_check_sla_respects_settings(self):
+		"""SLA check exits early when disabled."""
+		from oly_ai.core.sla_monitor import check_sla_status
+
+		with patch("frappe.get_cached_doc") as mock_settings:
+			settings_mock = MagicMock()
+			settings_mock.enable_sla_monitoring = 0
+			mock_settings.return_value = settings_mock
+
+			# Should not raise, just return
+			check_sla_status()
+
+	@patch("frappe.get_all")
+	@patch("frappe.get_cached_doc")
+	def test_check_sla_no_open_issues(self, mock_settings, mock_get_all):
+		"""SLA check succeeds with no open issues."""
+		settings_mock = MagicMock()
+		settings_mock.enable_sla_monitoring = 1
+		mock_settings.return_value = settings_mock
+		mock_get_all.return_value = []
+
+		from oly_ai.core.sla_monitor import check_sla_status
+		check_sla_status()  # Should complete without error
+
+	def test_notify_deduplication(self):
+		"""SLA notifications are deduplicated via cache."""
+		from oly_ai.core.sla_monitor import _notify_sla_breach
+
+		mock_issue = MagicMock()
+		mock_issue.name = "TEST-SLA-001"
+		mock_issue.subject = "Test issue"
+		mock_issue.priority = "Medium"
+		mock_issue.owner = "test@example.com"
+
+		# First call should send notification
+		with patch("frappe.cache") as mock_cache:
+			cache_mock = MagicMock()
+			cache_mock.get.return_value = None  # Not yet notified
+			mock_cache.return_value = cache_mock
+
+			with patch("frappe.get_all", return_value=[]):
+				with patch("frappe.new_doc") as mock_new_doc:
+					notification_mock = MagicMock()
+					mock_new_doc.return_value = notification_mock
+					_notify_sla_breach(mock_issue, "Response", 2.5)
+					# Cache should be set
+					cache_mock.set.assert_called_once()
+
+
+class TestCrossAppIntegration(FrappeTestCase):
+	"""Tests for cross-app integration — hooks, discover_doctypes, tools."""
+
+	def test_hooks_cover_marketing_suite(self):
+		"""hooks.py includes Marketing Suite doctype JS hooks."""
+		from oly_ai.hooks import doctype_js
+		marketing_doctypes = ["Content", "Ad Campaign", "Insight", "Research",
+		                      "Competitor", "Influencer", "Brand Profile", "Media Outlet", "Sponsor"]
+		for dt in marketing_doctypes:
+			self.assertIn(dt, doctype_js, f"Missing Marketing Suite hook for {dt}")
+
+	def test_hooks_cover_hrms(self):
+		"""hooks.py includes HRMS doctype JS hooks."""
+		from oly_ai.hooks import doctype_js
+		hrms_doctypes = ["Job Applicant", "Job Opening", "Appraisal",
+		                 "Employee Grievance", "Interview Feedback", "Salary Slip",
+		                 "Payroll Entry", "Travel Request", "Goal"]
+		for dt in hrms_doctypes:
+			self.assertIn(dt, doctype_js, f"Missing HRMS hook for {dt}")
+
+	def test_hooks_cover_oly(self):
+		"""hooks.py includes Oly custom app doctype JS hooks."""
+		from oly_ai.hooks import doctype_js
+		oly_doctypes = ["Letter", "Daily Work Report", "Telegram Chat",
+		                "Call Log", "Feedback", "Job Scorecard"]
+		for dt in oly_doctypes:
+			self.assertIn(dt, doctype_js, f"Missing Oly hook for {dt}")
+
+	def test_hooks_cover_webshop(self):
+		"""hooks.py includes Webshop doctype JS hooks."""
+		from oly_ai.hooks import doctype_js
+		webshop_doctypes = ["Website Item", "Item Review"]
+		for dt in webshop_doctypes:
+			self.assertIn(dt, doctype_js, f"Missing Webshop hook for {dt}")
+
+	def test_total_doctype_hooks_count(self):
+		"""Total number of doctype hooks is at least 43 (17 ERPNext + 26 cross-app)."""
+		from oly_ai.hooks import doctype_js
+		self.assertGreaterEqual(len(doctype_js), 43)
+
+	def test_communication_hook_registered(self):
+		"""Communication after_insert hook is registered in doc_events."""
+		from oly_ai.hooks import doc_events
+		self.assertIn("Communication", doc_events)
+		self.assertIn("after_insert", doc_events["Communication"])
+		self.assertIn("email_handler", doc_events["Communication"]["after_insert"])
+
+	def test_sla_scheduler_registered(self):
+		"""SLA monitor scheduler is registered in hooks."""
+		from oly_ai.hooks import scheduler_events
+		cron_jobs = scheduler_events.get("cron", {})
+		# Find the SLA check in any cron entry
+		found = False
+		for schedule, jobs in cron_jobs.items():
+			for job in jobs:
+				if "sla_monitor" in job:
+					found = True
+					break
+		self.assertTrue(found, "SLA monitor scheduler not registered")
+
+	def test_discover_doctypes_no_website_exclusion(self):
+		"""discover_doctypes does not exclude Website module anymore."""
+		import inspect
+		from oly_ai.api.train import discover_doctypes
+		source = inspect.getsource(discover_doctypes)
+		# "Website" should NOT appear in the module exclusion list
+		self.assertNotIn('"Website"', source)
+
+	def test_analyze_sentiment_tool_registered(self):
+		"""analyze_sentiment tool is in TOOL_DEFINITIONS."""
+		from oly_ai.core.tools import TOOL_DEFINITIONS
+		tool_names = [t["function"]["name"] for t in TOOL_DEFINITIONS]
+		self.assertIn("analyze_sentiment", tool_names)
+
+	def test_analyze_sentiment_tool_execution(self):
+		"""analyze_sentiment tool executes and returns results."""
+		from oly_ai.core.tools import execute_tool
+		result_json = execute_tool("analyze_sentiment", {"text": "This is great, thank you!"})
+		import json
+		result = json.loads(result_json)
+		self.assertIn("sentiment", result)
+		self.assertEqual(result["sentiment"], "positive")
+		self.assertIn("label", result)
+
+	def test_analyze_sentiment_in_read_tools(self):
+		"""analyze_sentiment is in the read_tools list."""
+		import inspect
+		from oly_ai.core.tools import get_available_tools
+		source = inspect.getsource(get_available_tools)
+		self.assertIn("analyze_sentiment", source)

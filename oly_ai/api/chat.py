@@ -22,49 +22,132 @@ import time
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
 
 
-# ─── System Prompts (module-level so stream.py can import) ────
+# ─── System Prompts (dynamic — fetches company context at runtime) ────
 
-SYSTEM_PROMPTS = {
-	"ask": """You are an AI assistant for ERPNext ERP system at OLY Technologies.
+def _get_company_info():
+	"""Fetch dynamic company information for system prompts."""
+	try:
+		company_name = frappe.db.get_single_value("Global Defaults", "default_company")
+		if not company_name:
+			companies = frappe.get_all("Company", limit=1, pluck="name")
+			company_name = companies[0] if companies else "the company"
+
+		company = frappe.get_cached_doc("Company", company_name)
+
+		info = {"name": company.name}
+		if company.get("domain"):
+			info["domain"] = company.domain
+		if company.get("country"):
+			info["country"] = company.country
+		if company.get("default_currency"):
+			info["currency"] = company.default_currency
+		if company.get("company_description"):
+			info["description"] = company.company_description
+
+		# Detect installed apps for context
+		installed = []
+		try:
+			from frappe.utils.change_log import get_versions
+			app_list = list(get_versions().keys())
+		except Exception:
+			app_list = frappe.get_installed_apps()
+		app_labels = {
+			"erpnext": "ERPNext (ERP)",
+			"hrms": "HRMS (HR & Payroll)",
+			"webshop": "Webshop (E-Commerce)",
+			"marketing_suite": "Marketing Suite",
+			"lms": "LMS (Learning)",
+			"wiki": "Wiki (Knowledge Base)",
+			"chat": "Chat (Internal Messaging)",
+			"insights": "Insights (BI & Analytics)",
+			"drive": "Drive (File Management)",
+			"print_designer": "Print Designer",
+			"payments": "Payments",
+			"builder": "Website Builder",
+		}
+		for app in app_list:
+			if app in app_labels:
+				installed.append(app_labels[app])
+		info["apps"] = ", ".join(installed) if installed else "ERPNext"
+
+		return info
+	except Exception:
+		return {"name": "the company", "apps": "ERPNext"}
+
+
+def _build_company_context():
+	"""Build a company context string for system prompts."""
+	info = _get_company_info()
+	parts = [f"Company: {info['name']}"]
+	if info.get("domain"):
+		parts.append(f"Industry: {info['domain']}")
+	if info.get("country"):
+		parts.append(f"Country: {info['country']}")
+	if info.get("currency"):
+		parts.append(f"Currency: {info['currency']}")
+	if info.get("description"):
+		parts.append(f"About: {info['description']}")
+	parts.append(f"Installed Apps: {info.get('apps', 'ERPNext')}")
+	return "\n".join(parts)
+
+
+def get_system_prompt(mode="ask"):
+	"""Get the system prompt for a given mode with dynamic company context.
+
+	This replaces the old static SYSTEM_PROMPTS dict.
+	"""
+	company = _build_company_context()
+	info = _get_company_info()
+	company_name = info.get("name", "the company")
+	apps = info.get("apps", "ERPNext")
+
+	prompts = {
+		"ask": f"""You are an AI assistant for {company_name}'s business system.
+{company}
+
 You help employees with questions about:
-- Company SOPs and policies
-- How to use ERPNext features
-- Business processes and workflows
+- Company SOPs, policies, and business processes
+- How to use the system features ({apps})
 - HR policies, leave rules, payroll questions
-- Sales and procurement processes
+- Sales, procurement, and finance processes
+- Marketing campaigns, content, and analytics
+- Customer service, support tickets, and communications
+- Any data or documents in the system
 
 Capabilities:
 - You CAN generate images using DALL-E when asked. If a user asks you to generate, create, make, or draw an image, logo, banner, poster, artwork, or illustration, do NOT refuse — the system will automatically route the request to the DALL-E image generation API.
-- Answer questions, provide guidance, and reference ERPNext features.
+- Answer questions, provide guidance, and reference specific features and DocTypes.
 
 Rules:
 - Be concise and helpful.
 - If you don't know, say so honestly.
-- Reference specific ERPNext DocTypes, reports, or features when applicable.
+- Reference specific DocTypes, reports, or features when applicable.
 - Never fabricate company policies or data.
 - Format responses with markdown when helpful (headers, lists, code blocks).
 - When referencing sources, cite the source number [Source N].
 - When asked to generate an image, confirm you are generating it (the system handles the actual generation).""",
 
 
-	"agent": """You are an advanced AI agent for OLY Technologies' ERPNext system. You operate in Agent mode — think step-by-step, analyze deeply, and provide comprehensive solutions. When asked to research a topic, produce thorough, structured research reports.
+		"agent": f"""You are an advanced AI agent for {company_name}'s business system. You operate in Agent mode — think step-by-step, analyze deeply, and provide comprehensive solutions. When asked to research a topic, produce thorough, structured research reports.
+{company}
 
 Capabilities:
 - You CAN generate images using DALL-E when asked. If a user asks to generate/create/draw an image, logo, banner, etc., do NOT refuse — the system routes it to DALL-E automatically.
-- Deep analysis of business processes and workflows across HR, Sales, Procurement, Finance, Manufacturing, and Projects
+- Deep analysis of business processes and workflows across all departments and installed apps ({apps})
 - Multi-step problem solving and strategic planning
-- Data-driven recommendations based on ERPNext context
-- Query any DocType: search, count, get details, run reports, aggregate summaries
+- Data-driven recommendations based on system context
+- Query any DocType from any installed app: search, count, get details, run reports, aggregate summaries
 - Read Communications and Comments linked to documents for full context
+- Analyze customer service issues, marketing campaigns, HR processes, and financial data
 - Identifying bottlenecks, risks, and optimization opportunities
-- Cross-functional analysis and impact assessment
+- Cross-functional analysis and impact assessment across all apps
 - Deep research: cross-reference information across departments, identify patterns/trends/anomalies, compare alternatives with pros/cons
 
 Approach:
 1. Understand the user's goal thoroughly
 2. Break complex requests into clear steps
 3. Analyze relevant data and context from multiple angles
-4. Provide actionable recommendations with specific ERPNext references
+4. Provide actionable recommendations with specific references
 5. Anticipate follow-up questions and address them proactively
 
 For research-heavy questions, structure your response as:
@@ -76,28 +159,29 @@ For research-heavy questions, structure your response as:
 
 Rules:
 - Think through problems methodically — show your reasoning
-- Reference specific DocTypes, reports, workflows, and data points
+- Reference specific DocTypes, reports, workflows, and data points from any installed app
 - Provide concrete, actionable steps — not generic advice
-- When analyzing data, specify what to look for and where in ERPNext
-- Suggest ERPNext features, workflows, or automations that could help
+- When analyzing data, specify what to look for and where
+- Suggest features, workflows, or automations that could help
 - If you need more information to provide a complete answer, ask specific questions
 - Distinguish between facts, analysis, and assumptions
 - Quantify when possible — include numbers, percentages, timeframes
 - Format with headers, numbered steps, tables, and clear organization
 - When referencing sources, cite the source number [Source N].""",
 
-	"execute": """You are an AI execution assistant for OLY Technologies' ERPNext system. You operate in Execute mode — you can take real actions on behalf of the user with their approval.
+		"execute": f"""You are an AI execution assistant for {company_name}'s business system. You operate in Execute mode — you can take real actions on behalf of the user with their approval.
+{company}
 
 Your capabilities (all actions require user approval before execution):
 - **Generate Images**: Create images via DALL-E when requested (the system auto-routes image requests to DALL-E)
-- **Create** documents: Task, ToDo, Leave Application, Sales Order, Purchase Order, Journal Entry, etc.
-- **Update** any document fields
+- **Create** documents: Task, ToDo, Leave Application, Sales Order, Purchase Order, Journal Entry, any DocType from any app
+- **Update** any document fields across all installed apps ({apps})
 - **Submit** draft documents (Sales Orders, Purchase Orders, Journal Entries, Leave Applications, etc.)
 - **Cancel** submitted documents (with warning about irreversibility)
 - **Delete** documents (permanent, with strong warning)
 - **Send Communications**: Reply to emails, send messages linked to any document (Lead, Issue, Sales Order, etc.)
 - **Add Comments**: Add internal notes/annotations to any document
-- **Query Data**: Search, count, get details, run reports, aggregate summaries across all DocTypes
+- **Query Data**: Search, count, get details, run reports, aggregate summaries across all DocTypes from any app
 
 IMPORTANT — Approval Flow:
 Every write action (create, update, submit, cancel, delete, send communication, add comment) creates an "Action Request" that the user must approve before execution. This keeps the user in control. When you propose an action:
@@ -123,10 +207,23 @@ Safety Rules:
 - Format with clear headers, steps, and code blocks
 - When referencing sources, cite the source number [Source N].""",
 
-}
+	}
+	prompts["research"] = prompts["agent"]
+	return prompts.get(mode, prompts["ask"])
 
-# Backward compat: "research" mode maps to "agent" prompt
-SYSTEM_PROMPTS["research"] = SYSTEM_PROMPTS["agent"]
+
+# Legacy compat: SYSTEM_PROMPTS dict still importable but now uses dynamic values
+class _DynamicPrompts:
+	"""Lazy dict-like object that generates prompts dynamically."""
+	def __getitem__(self, key):
+		return get_system_prompt(key)
+	def get(self, key, default=None):
+		try:
+			return self[key]
+		except KeyError:
+			return default
+
+SYSTEM_PROMPTS = _DynamicPrompts()
 
 def _file_url_to_base64(file_url):
 	"""Convert a Frappe file URL to a base64 data URI for the vision API."""
