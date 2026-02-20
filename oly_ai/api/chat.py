@@ -293,7 +293,7 @@ def get_messages(session_name):
 			frappe.throw(_("Access denied"), frappe.PermissionError)
 
 	messages = frappe.db.sql(
-		"""SELECT role, content, model, tokens_input, tokens_output,
+		"""SELECT idx, role, content, model, tokens_input, tokens_output,
 		          cost, response_time, creation
 		FROM `tabAI Chat Message`
 		WHERE parent=%s
@@ -303,6 +303,97 @@ def get_messages(session_name):
 	)
 
 	return messages
+
+
+@frappe.whitelist()
+def edit_message(session_name, message_idx, new_content, model=None, mode=None):
+	"""Edit a user message at the given index, truncate everything after it,
+	and re-generate the AI response.
+
+	Args:
+		session_name: AI Chat Session name
+		message_idx: 1-based index of the user message to edit
+		new_content: The edited message text
+		model: (optional) Model override
+		mode: (optional) Mode override
+	Returns:
+		dict with AI response (same shape as send_message)
+	"""
+	user = frappe.session.user
+	session = frappe.get_doc("AI Chat Session", session_name)
+	if session.user != user and user != "Administrator":
+		if not _is_shared_with(session_name, user):
+			frappe.throw(_("Access denied"), frappe.PermissionError)
+
+	message_idx = int(message_idx)
+	if message_idx < 1 or message_idx > len(session.messages):
+		frappe.throw(_("Invalid message index"))
+
+	msg = session.messages[message_idx - 1]
+	if msg.role != "user":
+		frappe.throw(_("Can only edit user messages"))
+
+	# Truncate: remove all messages from this index onward
+	session.messages = session.messages[:message_idx - 1]
+	session.save()
+	frappe.db.commit()
+
+	# Re-send with the edited content
+	return send_message(session_name, new_content, model=model, mode=mode)
+
+
+@frappe.whitelist()
+def regenerate_response(session_name, message_idx, model=None, mode=None):
+	"""Regenerate the AI response at the given index.
+
+	Removes the assistant message and everything after, then re-sends
+	the preceding user message.
+
+	Args:
+		session_name: AI Chat Session name
+		message_idx: 1-based index of the assistant message to regenerate
+		model: (optional) Model override
+		mode: (optional) Mode override
+	Returns:
+		dict with AI response (same shape as send_message)
+	"""
+	user = frappe.session.user
+	session = frappe.get_doc("AI Chat Session", session_name)
+	if session.user != user and user != "Administrator":
+		if not _is_shared_with(session_name, user):
+			frappe.throw(_("Access denied"), frappe.PermissionError)
+
+	message_idx = int(message_idx)
+	if message_idx < 1 or message_idx > len(session.messages):
+		frappe.throw(_("Invalid message index"))
+
+	msg = session.messages[message_idx - 1]
+	if msg.role != "assistant":
+		frappe.throw(_("Can only regenerate assistant messages"))
+
+	# Find the preceding user message
+	user_msg_content = None
+	for i in range(message_idx - 2, -1, -1):
+		if session.messages[i].role == "user":
+			user_msg_content = session.messages[i].content
+			break
+
+	if not user_msg_content:
+		frappe.throw(_("No preceding user message found"))
+
+	# Truncate: remove from the user message index onward (to re-send it)
+	truncate_at = message_idx - 1  # the assistant message
+	# Also remove the user message so send_message re-appends it
+	for i in range(truncate_at - 1, -1, -1):
+		if session.messages[i].role == "user":
+			truncate_at = i
+			break
+
+	session.messages = session.messages[:truncate_at]
+	session.save()
+	frappe.db.commit()
+
+	return send_message(session_name, user_msg_content, model=model, mode=mode)
 
 
 @frappe.whitelist()
@@ -438,7 +529,7 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 	# Cross-session memory — inject remembered facts/preferences
 	try:
 		from oly_ai.core.long_term_memory import get_user_memories
-		user_memories = get_user_memories(user)
+		user_memories = get_user_memories(user, message_context=message)
 		if user_memories:
 			llm_messages.append({
 				"role": "system",
@@ -447,15 +538,30 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 	except Exception:
 		pass
 
-	# @ Mention context — inject doctype schemas if user referenced @DocType
+	# @ Mention context — inject doctype schemas and/or specific document data
 	try:
-		mentioned_doctypes = _extract_doctype_mentions(message)
-		if mentioned_doctypes:
-			doctype_ctx = _build_doctype_context(mentioned_doctypes)
+		doctype_only, specific_docs = _extract_doctype_mentions(message)
+		if doctype_only:
+			doctype_ctx = _build_doctype_context(doctype_only)
 			if doctype_ctx:
 				llm_messages.append({
 					"role": "system",
 					"content": doctype_ctx,
+				})
+		if specific_docs:
+			# Also inject the schema for referenced doctypes
+			ref_doctypes = list({dt for dt, _ in specific_docs})
+			schema_ctx = _build_doctype_context(ref_doctypes)
+			if schema_ctx:
+				llm_messages.append({
+					"role": "system",
+					"content": schema_ctx,
+				})
+			doc_ctx = _build_specific_document_context(specific_docs)
+			if doc_ctx:
+				llm_messages.append({
+					"role": "system",
+					"content": doc_ctx,
 				})
 	except Exception:
 		pass
@@ -1290,6 +1396,58 @@ def get_doctype_suggestions(query=""):
 	return results
 
 
+@frappe.whitelist()
+def get_document_suggestions(doctype, query=""):
+	"""Search for specific documents within a DocType, for @mention autocomplete.
+
+	Args:
+		doctype: the DocType to search within
+		query: partial document name to search
+
+	Returns:
+		list: [{"name": "INV-00001", "title": "..."}, ...]
+	"""
+	if not doctype or not frappe.db.exists("DocType", doctype):
+		return []
+
+	query = (query or "").strip()
+	meta = frappe.get_meta(doctype)
+
+	# Determine the title field for display
+	title_field = meta.title_field or "name"
+	fields = ["name"]
+	if title_field != "name" and meta.has_field(title_field):
+		fields.append(title_field)
+
+	filters = {}
+	if query:
+		or_filters = {"name": ["like", f"%{query}%"]}
+		if title_field != "name" and meta.has_field(title_field):
+			or_filters[title_field] = ["like", f"%{query}%"]
+		# Use or_filters for name/title search
+		results = frappe.get_all(
+			doctype,
+			or_filters=or_filters,
+			fields=fields,
+			order_by="modified desc",
+			limit_page_length=15,
+		)
+	else:
+		results = frappe.get_all(
+			doctype,
+			fields=fields,
+			order_by="modified desc",
+			limit_page_length=15,
+		)
+
+	# Normalize output
+	out = []
+	for r in results:
+		title = r.get(title_field) if title_field != "name" else ""
+		out.append({"name": r.name, "title": title or ""})
+	return out
+
+
 def _build_doctype_context(doctype_names):
 	"""Build a schema context string for the given doctype names.
 
@@ -1356,28 +1514,113 @@ def _build_doctype_context(doctype_names):
 	return "The user referenced these ERPNext DocTypes. Use their exact field names and structure in your response:\n\n" + "\n\n---\n\n".join(parts)
 
 
-def _extract_doctype_mentions(message):
-	"""Extract @DocType mentions from a message string.
+def _build_specific_document_context(doc_mentions):
+	"""Build context containing actual document data for specific @DocType:DocName mentions.
 
-	Supports: @Sales Invoice, @Employee, @"Sales Invoice", @`Sales Invoice`
+	Args:
+		doc_mentions: list of (doctype, docname) tuples
 
 	Returns:
-		list: unique doctype names found
+		str: formatted context string with document field values
 	"""
-	# Match @"Doctype Name" or @`Doctype Name` or @SingleWord or @Multi Word (up to 4 words of Title Case)
-	mentions = set()
+	if not doc_mentions:
+		return ""
 
-	# Quoted mentions: @"Sales Invoice" or @`Sales Invoice`
-	for m in re.finditer(r'@["`]([^"`]+)["`]', message):
-		mentions.add(m.group(1).strip())
+	parts = []
+	seen = set()
+	for dt_name, doc_name in doc_mentions[:5]:  # max 5 docs
+		key = f"{dt_name}:{doc_name}"
+		if key in seen:
+			continue
+		seen.add(key)
 
-	# Unquoted mentions: @Employee or @Sales Invoice (Title Case words)
-	for m in re.finditer(r'@([A-Z][a-z]+(?:\s[A-Z][a-z]+){0,4})\b', message):
-		mentions.add(m.group(1).strip())
+		try:
+			doc = frappe.get_doc(dt_name, doc_name)
+			meta = frappe.get_meta(dt_name)
 
-	# Validate against actual doctypes
-	valid = []
-	for name in mentions:
-		if frappe.db.exists("DocType", name):
-			valid.append(name)
-	return valid
+			# Build field values (skip layout fields and empty values)
+			field_lines = [f"**{dt_name}: {doc_name}**"]
+			for f in meta.fields:
+				if f.fieldtype in ("Section Break", "Column Break", "Tab Break", "HTML", "Fold", "Table"):
+					continue
+				val = doc.get(f.fieldname)
+				if val is not None and val != "" and val != 0:
+					label = f.label or f.fieldname
+					field_lines.append(f"  {label}: {val}")
+
+			# Include key standard fields
+			for sf in ["creation", "modified", "owner", "docstatus"]:
+				val = doc.get(sf)
+				if val:
+					field_lines.append(f"  {sf}: {val}")
+
+			# Include child table rows (summarized)
+			for f in meta.fields:
+				if f.fieldtype == "Table" and f.options:
+					rows = doc.get(f.fieldname) or []
+					if rows:
+						child_meta = frappe.get_meta(f.options)
+						child_fields = [cf for cf in child_meta.fields if cf.fieldtype not in ("Section Break", "Column Break", "Tab Break", "HTML", "Fold")][:10]
+						field_lines.append(f"\n  Child table '{f.fieldname}' ({len(rows)} rows):")
+						for i, row in enumerate(rows[:20]):  # max 20 child rows
+							row_vals = []
+							for cf in child_fields:
+								rv = row.get(cf.fieldname)
+								if rv is not None and rv != "" and rv != 0:
+									row_vals.append(f"{cf.label or cf.fieldname}={rv}")
+							if row_vals:
+								field_lines.append(f"    Row {i+1}: " + ", ".join(row_vals))
+
+			parts.append("\n".join(field_lines))
+		except Exception:
+			pass
+
+	if not parts:
+		return ""
+
+	return "The user referenced these specific documents. Here is their actual data:\n\n" + "\n\n---\n\n".join(parts)
+
+
+def _extract_doctype_mentions(message):
+	"""Extract @DocType and @DocType:DocName mentions from a message string.
+
+	Supports: @Sales Invoice, @Employee, @"Sales Invoice", @`Sales Invoice`
+	          @Sales Invoice:INV-001, @"Sales Invoice":INV-001
+
+	Returns:
+		tuple: (list of doctype-only names, list of (doctype, docname) tuples)
+	"""
+	doctype_only = set()
+	specific_docs = []
+
+	# Quoted mentions with specific doc: @"Sales Invoice":INV-001 or @`Sales Invoice`:DocName
+	for m in re.finditer(r'@["`]([^"`]+)["`]:([^\s,;]+)', message):
+		dt = m.group(1).strip()
+		dn = m.group(2).strip()
+		if frappe.db.exists("DocType", dt) and frappe.db.exists(dt, dn):
+			specific_docs.append((dt, dn))
+
+	# Unquoted mentions with specific doc: @Sales Invoice:INV-001
+	for m in re.finditer(r'@([A-Z][a-z]+(?:\s[A-Z][a-z]+){0,4}):([^\s,;]+)', message):
+		dt = m.group(1).strip()
+		dn = m.group(2).strip()
+		if frappe.db.exists("DocType", dt) and frappe.db.exists(dt, dn):
+			specific_docs.append((dt, dn))
+
+	# Quoted mentions (schema only): @"Sales Invoice" or @`Sales Invoice` (not followed by :)
+	for m in re.finditer(r'@["`]([^"`]+)["`](?!:)', message):
+		dt = m.group(1).strip()
+		if frappe.db.exists("DocType", dt):
+			doctype_only.add(dt)
+
+	# Unquoted mentions (schema only): @Employee or @Sales Invoice (not followed by :)
+	for m in re.finditer(r'@([A-Z][a-z]+(?:\s[A-Z][a-z]+){0,4})\b(?!:)', message):
+		dt = m.group(1).strip()
+		if frappe.db.exists("DocType", dt):
+			doctype_only.add(dt)
+
+	# Remove doctypes that already appear in specific_docs
+	specific_doctypes = {dt for dt, _ in specific_docs}
+	doctype_only -= specific_doctypes
+
+	return list(doctype_only), specific_docs

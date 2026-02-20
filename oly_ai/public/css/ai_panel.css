@@ -741,7 +741,12 @@
 @media (max-width: 576px) {
   .oly-ai-app {
     max-width: 100% !important;
-    bottom: 1rem !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 80vh !important;
+    border-radius: 16px 16px 0 0 !important;
   }
   .oly-ai-bubble-closed {
     display: none;
@@ -749,6 +754,18 @@
   .oly-ai-cross {
     display: block !important;
   }
+  .oly-ai-header { padding: 10px 12px; gap: 6px; }
+  .oly-ai-header h4 { font-size: 0.875rem; }
+  .oly-ai-msgs { padding: 8px 6px; }
+  .oly-ai-msg { padding: 4px 8px; }
+  .oly-ai-msg-bubble-user { max-width: 88%; font-size: 0.8125rem; }
+  .oly-ai-msg-content { font-size: 0.8125rem; padding: 8px 10px; }
+  .oly-ai-actions { padding: 6px 8px; }
+  .oly-ai-input { font-size: 0.875rem; max-height: 100px; }
+  .oly-ai-footer { padding: 4px 8px; gap: 4px; }
+  .oly-ai-footer select { font-size: 0.6875rem; max-width: 100px; }
+  .oly-ai-mode-btn { font-size: 0.6875rem; padding: 2px 6px; }
+  #panel-mention-dropdown { max-height: 180px; }
 }
 
 /* ────────────────────────────────────────────
@@ -911,6 +928,24 @@
   .oly-fp-msgs .oly-ai-msg { padding: 8px 12px; }
   .oly-fp-inputarea { padding: 0 12px 12px; }
   .oly-fp-msgs .oly-ai-chips { grid-template-columns: 1fr; }
+  .oly-fp-head { padding: 8px 12px; }
+  .oly-fp-title { font-size: 0.8125rem; }
+  .oly-fp-model { font-size: 0.625rem; padding: 2px 8px; }
+  .oly-fp-user-bubble { max-width: 90% !important; font-size: 0.8125rem !important; }
+  .oly-fp-ai-avatar { width: 24px !important; height: 24px !important; min-width: 24px !important; }
+  .oly-fp-inputarea .oly-ai-input { font-size: 0.8125rem; }
+  #fp-mention-dropdown { max-height: 200px; }
+  .oly-fp-sidebar { width: 220px; min-width: 220px; }
+}
+@media (max-width: 480px) {
+  .oly-fp { height: calc(100vh - 48px); }
+  .oly-fp-sidebar { width: 100%; min-width: 100%; }
+  .oly-fp-msgs .oly-ai-msg { padding: 6px 8px; }
+  .oly-fp-inputarea { padding: 0 8px 8px; }
+  .oly-fp-msgs .oly-ai-welcome { min-height: 200px; padding: 20px 10px; }
+  .oly-fp-msgs .oly-ai-welcome h3 { font-size: 1.25rem; }
+  .oly-fp-msgs .oly-ai-chips { gap: 6px; }
+  .oly-fp-msgs .oly-ai-chip { font-size: 0.75rem; padding: 8px 10px; }
 }
 
 /* ────────────────────────────────────────────
@@ -977,5 +1012,20 @@
   fill: #1a1a1a !important;
 }
 [data-theme="dark"] .oly-ai-msg-bubble-user {
+  background: var(--gray-700) !important;
+}
+[data-theme="dark"] .oly-retry-btn {
+  color: var(--primary-color) !important;
+}
+[data-theme="dark"] .oly-ai-regen-btn:hover,
+[data-theme="dark"] .oly-fp-edit-btn:hover {
+  color: var(--text-color) !important;
+}
+[data-theme="dark"] .oly-ai-msg-error {
+  background: rgba(239,68,68,0.12);
+  border-color: rgba(239,68,68,0.3);
+}
+[data-theme="dark"] .oly-mention-item:hover,
+[data-theme="dark"] .oly-mention-item.active {
   background: var(--gray-700) !important;
 }

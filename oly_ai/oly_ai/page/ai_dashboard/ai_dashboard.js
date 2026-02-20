@@ -53,12 +53,36 @@ frappe.pages["ai-dashboard"].on_page_load = function (wrapper) {
   page.add_inner_button(__("AI Settings"), function () { frappe.set_route("Form", "AI Settings"); });
   page.add_inner_button(__("Ask AI"), function () { frappe.set_route("ask-ai"); });
 
+  // Date range picker
+  var $date_ctrl = $('<div style="display:flex;gap:8px;align-items:center;margin:0 12px;"></div>');
+  var from_date = null;
+  var to_date = null;
+  var $from = $('<input type="date" class="form-control form-control-sm" style="width:140px;font-size:0.8rem;">');
+  var $to = $('<input type="date" class="form-control form-control-sm" style="width:140px;font-size:0.8rem;">');
+  var $apply = $('<button class="btn btn-xs btn-primary-light" style="font-size:0.75rem;">Apply</button>');
+  var $reset = $('<button class="btn btn-xs btn-default" style="font-size:0.75rem;">Reset</button>');
+  $date_ctrl.append('<span style="font-size:0.8rem;color:var(--text-muted);">From:</span>', $from, '<span style="font-size:0.8rem;color:var(--text-muted);">To:</span>', $to, $apply, $reset);
+  page.page_actions.prepend($date_ctrl);
+  $apply.on('click', function () {
+    from_date = $from.val() || null;
+    to_date = $to.val() || null;
+    load_dashboard();
+  });
+  $reset.on('click', function () {
+    from_date = null; to_date = null;
+    $from.val(''); $to.val('');
+    load_dashboard();
+  });
+
   function fmt_cost(v) { return "$" + Number(v || 0).toFixed(4); }
   function fmt_num(v) { return Number(v || 0).toLocaleString(); }
   function fmt_pct(v) { return Number(v || 0).toFixed(1) + "%"; }
 
   function load_dashboard() {
-    frappe.xcall("oly_ai.api.dashboard.get_dashboard_data").then(function (d) {
+    var args = {};
+    if (from_date) args.from_date = from_date;
+    if (to_date) args.to_date = to_date;
+    frappe.xcall("oly_ai.api.dashboard.get_dashboard_data", args).then(function (d) {
       render_dashboard(d);
     }).catch(function (err) {
       $dash.html('<div style="text-align:center;padding:60px;color:var(--red-500);">' +

@@ -171,7 +171,7 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 		# Cross-session memory — inject remembered facts/preferences
 		try:
 			from oly_ai.core.long_term_memory import get_user_memories
-			user_memories = get_user_memories(user)
+			user_memories = get_user_memories(user, message_context=message)
 			if user_memories:
 				llm_messages.append({
 					"role": "system",

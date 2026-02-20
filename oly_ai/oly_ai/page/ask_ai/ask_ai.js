@@ -229,6 +229,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   var stream_poll_msg_count = 0;  // message count when stream started
   var _sending_safety_timer = null;  // safety timer to re-enable input
   var _active_request_id = null;    // tracks active request for cancellation
+  var _last_sent_message = null;    // last message sent, for retry
   var _fp_recording = false;
   var _fp_media_recorder = null;
   var _fp_audio_chunks = [];
@@ -721,7 +722,7 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
           $msgs.empty();
           if (!msgs || !msgs.length) { show_welcome(); return; }
           msgs.forEach(function (m) {
-            if (m.role === "user") append_user_msg(m.content || "");
+            if (m.role === "user") append_user_msg(m.content || "", m.idx);
             else append_ai_msg(m.content || "", m);
           });
           scroll_bottom();
@@ -910,35 +911,47 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   // ── Messages ──
   function w(max) { return '<div style="max-width:' + (max || 850) + 'px;margin:0 auto;width:100%;">'; }
 
-  function append_user_msg(text) {
+  function append_user_msg(text, idx) {
     var escaped = frappe.utils.escape_html(text);
+    var idx_attr = idx ? ' data-msg-idx="' + idx + '"' : '';
+    var edit_btn = idx ? '<span class="oly-fp-edit-btn" data-idx="' + idx + '" data-text="' + escaped + '" style="display:flex;align-items:center;gap:2px;cursor:pointer;color:var(--text-muted);font-size:0.6875rem;padding:3px 4px;" title="' + __('Edit & resend') + '"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></span>' : '';
     $msgs.append(
       w() +
-      '<div class="oly-fp-user-row" style="display:flex;gap:12px;margin-bottom:20px;justify-content:flex-end;">' +
+      '<div class="oly-fp-user-row"' + idx_attr + ' style="display:flex;gap:12px;margin-bottom:20px;justify-content:flex-end;">' +
         '<div style="max-width:75%;display:flex;flex-direction:column;align-items:flex-end;">' +
           '<div class="oly-fp-user-bubble" style="background:var(--primary-color);color:white;border-radius:18px 18px 4px 18px;padding:10px 16px;font-size:0.9rem;line-height:1.5;word-break:break-word;">' +
             escaped +
           '</div>' +
-          '<span class="oly-fp-user-copy" data-text="' + escaped + '" style="display:flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-muted);font-size:0.6875rem;padding:3px 4px;margin-top:2px;opacity:0;transition:opacity 0.15s;">' + I.copy + '</span>' +
+          '<div class="oly-fp-user-actions" style="display:flex;align-items:center;gap:4px;margin-top:2px;opacity:0;transition:opacity 0.15s;">' +
+            '<span class="oly-fp-user-copy" data-text="' + escaped + '" style="display:flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-muted);font-size:0.6875rem;padding:3px 4px;">' + I.copy + '</span>' +
+            edit_btn +
+          '</div>' +
         '</div>' +
         user_avatar_sm +
       '</div></div>'
     );
-    $msgs.find('.oly-fp-user-row:last').on('mouseenter', function () {
-      $(this).find('.oly-fp-user-copy').css('opacity', '1');
+    var $row = $msgs.find('.oly-fp-user-row:last');
+    $row.on('mouseenter', function () {
+      $(this).find('.oly-fp-user-actions').css('opacity', '1');
     }).on('mouseleave', function () {
-      $(this).find('.oly-fp-user-copy').css('opacity', '0');
+      $(this).find('.oly-fp-user-actions').css('opacity', '0');
     });
-    $msgs.find('.oly-fp-user-copy:last').on('click', function () {
+    $row.find('.oly-fp-user-copy').on('click', function () {
       frappe.utils.copy_to_clipboard($(this).data('text'));
       var $b = $(this);
       $b.html(I.check);
       setTimeout(function () { $b.html(I.copy); }, 1500);
     });
+    $row.find('.oly-fp-edit-btn').on('click', function () {
+      fp_edit_message($(this).data('idx'), $(this).data('text'));
+    });
   }
 
   function append_ai_msg(content, meta) {
     var parts = [r_model(meta), r_cost(meta)].filter(Boolean).join(" &middot; ");
+    var idx = meta && meta.idx;
+    var idx_attr = idx ? ' data-msg-idx="' + idx + '"' : '';
+    var regen_btn = idx ? '<span class="oly-ai-regen-btn" data-idx="' + idx + '" style="cursor:pointer;color:var(--text-muted);display:flex;align-items:center;gap:4px;transition:color .15s;" title="' + __('Regenerate') + '"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg></span>' : '';
     var is_image = meta && meta.type === "image";
     var rendered;
     if (is_image && meta.image_url) {
@@ -952,13 +965,14 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     }
     $msgs.append(
       w() +
-      '<div style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start;">' +
+      '<div class="oly-fp-ai-row"' + idx_attr + ' style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start;">' +
         '<div class="oly-fp-ai-avatar" style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + I.sparkles + '</div>' +
         '<div style="flex:1;min-width:0;">' +
           rendered +
           '<div style="display:flex;align-items:center;gap:12px;margin-top:6px;font-size:0.75rem;">' +
             '<span class="oly-ai-copy-btn" data-text="' + frappe.utils.escape_html(content) + '" style="cursor:pointer;color:var(--text-muted);display:flex;align-items:center;gap:4px;transition:color .15s;">' + I.copy + ' Copy</span>' +
             '<span class="oly-ai-tts-btn" style="cursor:pointer;color:var(--text-muted);display:flex;align-items:center;gap:4px;transition:color .15s;" title="' + __("Listen") + '">' + I.speaker + '</span>' +
+            regen_btn +
             (parts ? '<span style="color:var(--text-light);">' + parts + '</span>' : '') +
           '</div>' +
         '</div>' +
@@ -978,7 +992,78 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
       $b.html(I.check + " Copied");
       setTimeout(function () { $b.html(I.copy + " Copy"); }, 2000);
     });
+    $msgs.find(".oly-ai-regen-btn").off("click").on("click", function () {
+      fp_regenerate($(this).data("idx"));
+    });
     enhance_code_blocks();
+  }
+
+  /* ── Edit message (full page) ── */
+  function fp_edit_message(idx, original_text) {
+    if (!current_session) return;
+    var d = new frappe.ui.Dialog({
+      title: __("Edit message"),
+      fields: [{ fieldname: "content", fieldtype: "Small Text", default: original_text }],
+      primary_action_label: __("Send"),
+      primary_action: function (vals) {
+        d.hide();
+        var new_text = (vals.content || "").trim();
+        if (!new_text) return;
+        // remove messages from this idx onward
+        $msgs.find('[data-msg-idx]').each(function () {
+          if (parseInt($(this).attr('data-msg-idx')) >= idx) $(this).closest('.oly-fp-ts-sep, .oly-fp-user-row, .oly-fp-ai-row').addBack().remove();
+        });
+        // also just remove everything from the idx wrapper onwards
+        $msgs.find('.oly-fp-user-row[data-msg-idx], .oly-fp-ai-row[data-msg-idx]').each(function () {
+          if (parseInt($(this).attr('data-msg-idx')) >= idx) {
+            $(this).prev('.oly-fp-ts-sep').remove();
+            $(this).remove();
+          }
+        });
+        append_user_msg(new_text, idx);
+        $msgs.append('<div class="oly-fp-ai-loading" style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start;"><div style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;">' + I.sparkles + '</div><div class="oly-typing"><span></span><span></span><span></span></div></div>');
+        scroll_bottom();
+        frappe.call({
+          method: "oly_ai.api.chat.edit_message",
+          args: { session_name: current_session, message_idx: idx, new_content: new_text, model: current_model, mode: current_mode },
+          callback: function (r) {
+            $msgs.find(".oly-fp-ai-loading").remove();
+            if (r.message) {
+              append_ai_msg(r.message.content || "", r.message);
+              wire_copy(); scroll_bottom();
+            }
+          },
+          error: function () { $msgs.find(".oly-fp-ai-loading").remove(); }
+        });
+      }
+    });
+    d.show();
+  }
+
+  /* ── Regenerate response (full page) ── */
+  function fp_regenerate(idx) {
+    if (!current_session || !idx) return;
+    // remove this AI message and any after it from DOM
+    $msgs.find('.oly-fp-ai-row[data-msg-idx]').each(function () {
+      if (parseInt($(this).attr('data-msg-idx')) >= idx) {
+        $(this).prev('.oly-fp-ts-sep').remove();
+        $(this).remove();
+      }
+    });
+    $msgs.append('<div class="oly-fp-ai-loading" style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start;"><div style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--primary-color);color:white;display:flex;align-items:center;justify-content:center;">' + I.sparkles + '</div><div class="oly-typing"><span></span><span></span><span></span></div></div>');
+    scroll_bottom();
+    frappe.call({
+      method: "oly_ai.api.chat.regenerate_response",
+      args: { session_name: current_session, message_idx: idx, model: current_model, mode: current_mode },
+      callback: function (r) {
+        $msgs.find(".oly-fp-ai-loading").remove();
+        if (r.message) {
+          append_ai_msg(r.message.content || "", r.message);
+          wire_copy(); scroll_bottom();
+        }
+      },
+      error: function () { $msgs.find(".oly-fp-ai-loading").remove(); }
+    });
   }
 
   function scroll_bottom() {
@@ -1080,11 +1165,12 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   }
 
   // ── Send message ──
-  function send_message() {
-    var q = $input.val().trim();
+  function send_message(retry_text) {
+    var q = retry_text || $input.val().trim();
     if (!q || sending) return;
+    _last_sent_message = q;
     set_sending_state(true);
-    $input.val("").css("height", "auto");
+    if (!retry_text) $input.val("").css("height", "auto");
 
     var files_to_send = attached_files.slice();
     clear_attachments();
@@ -1159,12 +1245,21 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
           if (_active_request_id !== request_id) return;
           var detail = (r && r.message) || (r && r._server_messages) || __("Something went wrong. Please try again.");
           console.error("[Ask AI] Send error:", r, detail);
+          var retry_id = 'retry-' + Math.random().toString(36).substring(2, 9);
           $("#" + lid).closest('div[style*="max-width"]').html(
             '<div style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start;">' +
               '<div style="width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--red-100);color:var(--red-600);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">!</div>' +
-              '<div style="flex:1;color:var(--red-600);font-size:0.9rem;">' + frappe.utils.escape_html(String(detail)) + '</div>' +
+              '<div style="flex:1;">' +
+                '<div style="color:var(--red-600);font-size:0.9rem;">' + frappe.utils.escape_html(String(detail)) + '</div>' +
+                '<div id="' + retry_id + '" style="margin-top:6px;cursor:pointer;color:var(--primary-color);font-size:0.85rem;font-weight:600;">↻ ' + __("Try again") + '</div>' +
+              '</div>' +
             '</div>'
           );
+          $('#' + retry_id).on('click', function () {
+            $(this).closest('div[style*="max-width"]').remove();
+            _last_failed_message = q;
+            send_message(q);
+          });
           set_sending_state(false);
         },
       });
@@ -1262,10 +1357,17 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     _stop_poll(); // Realtime worked — stop polling
     var $el = $("#stream-content-" + data.task_id);
     if ($el.length) {
+      var retry_id = 'retry-' + data.task_id;
       $el.removeClass("ai-streaming-cursor").html(
         '<div style="color:var(--red-600);font-size:0.9rem;padding:8px 12px;background:rgba(239,68,68,0.08);border-radius:8px;">' +
-        frappe.utils.escape_html(data.error || __("Something went wrong")) + '</div>'
+        frappe.utils.escape_html(data.error || __("Something went wrong")) +
+        '<div id="' + retry_id + '" style="margin-top:6px;cursor:pointer;color:var(--primary-color);font-weight:600;">↻ ' + __("Try again") + '</div>' +
+        '</div>'
       );
+      $('#' + retry_id).on('click', function () {
+        $(this).closest('.oly-fp-ai-row').remove();
+        if (_last_sent_message) send_message(_last_sent_message);
+      });
     }
     delete stream_buffer[data.task_id];
     stream_task_id = null;
@@ -1368,9 +1470,28 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
         var $sel = $dd.find(".oly-mention-item.active");
         if ($sel.length) {
           e.preventDefault();
-          _insert_mention($sel.data("doctype"));
+          if (_mention_mode === "document" && $sel.data("docname")) {
+            _insert_doc_mention($sel.data("docname"));
+          } else if ($sel.data("doctype")) {
+            _insert_mention($sel.data("doctype"));
+          }
           return;
         }
+      } else if (e.which === 32 && _mention_mode === "document") { // Space in document mode => keep schema only
+        $dd.removeClass("show").empty();
+        _mention_mode = "doctype";
+        _mention_doctype = null;
+        // Convert @DocType: to @DocType (remove trailing colon + partial)
+        var el = $input[0];
+        var val = el.value;
+        var pos = el.selectionStart;
+        var before = val.substring(0, pos);
+        var after = val.substring(pos);
+        var new_before = before.replace(/@([A-Z][a-z]+(?:\s[A-Z][a-z]+){0,4}):[^\s]*$/, "@$1 ");
+        el.value = new_before + after;
+        el.setSelectionRange(new_before.length, new_before.length);
+        e.preventDefault();
+        return;
       } else if (e.which === 27) { // Escape
         $dd.removeClass("show").empty();
         return;
@@ -1380,6 +1501,8 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
   });
   // @mention detection on input
   var _mention_timer = null;
+  var _mention_mode = "doctype"; // "doctype" or "document"
+  var _mention_doctype = null; // current doctype for document-level mentions
   $input.on("input", function () {
     this.style.height = "auto";
     this.style.height = Math.min(this.scrollHeight, 150) + "px";
@@ -1388,19 +1511,40 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     var val = this.value;
     var pos = this.selectionStart;
     var before = val.substring(0, pos);
+
+    // Check for @DocType: pattern (document-level search)
+    var doc_match = before.match(/@([A-Z][a-z]+(?:\s[A-Z][a-z]+){0,4}):([^\s]*)$/);
+    if (doc_match) {
+      var dt = doc_match[1].trim();
+      var dq = doc_match[2] || "";
+      _mention_mode = "document";
+      _mention_doctype = dt;
+      _mention_timer = setTimeout(function () { _search_documents(dt, dq); }, 200);
+      return;
+    }
+
+    // Check for @DocType pattern (schema-level)
     var match = before.match(/@([A-Za-z\s]{1,40})$/);
     if (match) {
       var q = match[1].trim();
+      _mention_mode = "doctype";
+      _mention_doctype = null;
       if (q.length >= 1) {
         _mention_timer = setTimeout(function () { _search_doctypes(q); }, 200);
       }
     } else {
+      _mention_mode = "doctype";
+      _mention_doctype = null;
       $("#fp-mention-dropdown").removeClass("show").empty();
     }
   });
   // Click on mention item
   $(document).on("click", ".oly-mention-item", function () {
-    _insert_mention($(this).data("doctype"));
+    if (_mention_mode === "document" && $(this).data("docname")) {
+      _insert_doc_mention($(this).data("docname"));
+    } else if ($(this).data("doctype")) {
+      _insert_mention($(this).data("doctype"));
+    }
   });
   // Close mention dropdown when clicking outside
   $(document).on("click", function (e) {
@@ -1433,13 +1577,57 @@ frappe.pages["ask-ai"].on_page_load = function (wrapper) {
     var pos = el.selectionStart;
     var before = val.substring(0, pos);
     var after = val.substring(pos);
-    // Replace the @query with @DocType
-    var new_before = before.replace(/@[A-Za-z\s]{1,40}$/, "@" + doctype + " ");
+    // Replace the @query with @DocType: to trigger document-level search
+    var new_before = before.replace(/@[A-Za-z\s]{1,40}$/, "@" + doctype + ":");
     el.value = new_before + after;
     var new_pos = new_before.length;
     el.setSelectionRange(new_pos, new_pos);
     el.focus();
     // Trigger resize
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 150) + "px";
+    // Auto-trigger document search
+    _mention_mode = "document";
+    _mention_doctype = doctype;
+    _search_documents(doctype, "");
+  }
+
+  function _search_documents(doctype, query) {
+    frappe.xcall("oly_ai.api.chat.get_document_suggestions", { doctype: doctype, query: query }).then(function (results) {
+      var $dd = $("#fp-mention-dropdown");
+      if (!results || !results.length) {
+        $dd.html('<div style="padding:10px 14px;color:var(--text-muted);font-size:0.8rem;">' + __("Type to search or press Space for schema only") + '</div>').addClass("show");
+        return;
+      }
+      var html = '<div style="padding:6px 12px;font-size:0.7rem;color:var(--text-muted);border-bottom:1px solid var(--border-color);">' + frappe.utils.escape_html(doctype) + ' — ' + __("Select a document or press Space for schema only") + '</div>';
+      results.forEach(function (r, i) {
+        var display = frappe.utils.escape_html(r.name);
+        if (r.title) display += ' <span style="color:var(--text-muted);font-size:0.75rem;">— ' + frappe.utils.escape_html(r.title) + '</span>';
+        html += '<div class="oly-mention-item' + (i === 0 ? ' active' : '') + '" data-docname="' + frappe.utils.escape_html(r.name) + '">' +
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>' +
+          '<span>' + display + '</span>' +
+        '</div>';
+      });
+      $dd.html(html).addClass("show");
+    });
+  }
+
+  function _insert_doc_mention(docname) {
+    var $dd = $("#fp-mention-dropdown");
+    $dd.removeClass("show").empty();
+    _mention_mode = "doctype";
+    _mention_doctype = null;
+    var el = $input[0];
+    var val = el.value;
+    var pos = el.selectionStart;
+    var before = val.substring(0, pos);
+    var after = val.substring(pos);
+    // Replace @DocType:partial with @DocType:DocName
+    var new_before = before.replace(/@([A-Z][a-z]+(?:\s[A-Z][a-z]+){0,4}):[^\s]*$/, "@$1:" + docname + " ");
+    el.value = new_before + after;
+    var new_pos = new_before.length;
+    el.setSelectionRange(new_pos, new_pos);
+    el.focus();
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 150) + "px";
   }

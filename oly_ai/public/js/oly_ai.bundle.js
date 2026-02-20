@@ -783,9 +783,27 @@ oly_ai.Panel = class {
           var $sel = $dd.find('.oly-mention-item.active');
           if ($sel.length) {
             e.preventDefault();
-            me._insert_mention($sel.data('doctype'));
+            if (me._mention_mode === 'document' && $sel.data('docname')) {
+              me._insert_doc_mention($sel.data('docname'));
+            } else if ($sel.data('doctype')) {
+              me._insert_mention($sel.data('doctype'));
+            }
             return;
           }
+        } else if (e.which === 32 && me._mention_mode === 'document') { // Space => schema only
+          $dd.hide().empty();
+          me._mention_mode = 'doctype';
+          me._mention_doctype = null;
+          var el = me.$input[0];
+          var val = el.value;
+          var pos = el.selectionStart;
+          var before = val.substring(0, pos);
+          var after = val.substring(pos);
+          var new_before = before.replace(/@([A-Z][a-z]+(?:\s[A-Z][a-z]+){0,4}):[^\s]*$/, '@$1 ');
+          el.value = new_before + after;
+          el.setSelectionRange(new_before.length, new_before.length);
+          e.preventDefault();
+          return;
         } else if (e.which === 27) { // Escape
           $dd.hide().empty();
           return;
@@ -794,6 +812,8 @@ oly_ai.Panel = class {
       if (e.which === 13 && !e.shiftKey) { e.preventDefault(); me.send(); }
     });
     this._mention_timer = null;
+    this._mention_mode = 'doctype';
+    this._mention_doctype = null;
     this.$input.on('input', function () {
       this.style.height = 'auto';
       this.style.height = Math.min(this.scrollHeight, 120) + 'px';
@@ -802,13 +822,27 @@ oly_ai.Panel = class {
       var val = this.value;
       var pos = this.selectionStart;
       var before = val.substring(0, pos);
+
+      // Check for @DocType: pattern (document-level search)
+      var doc_match = before.match(/@([A-Z][a-z]+(?:\s[A-Z][a-z]+){0,4}):([^\s]*)$/);
+      if (doc_match) {
+        me._mention_mode = 'document';
+        me._mention_doctype = doc_match[1].trim();
+        me._mention_timer = setTimeout(function () { me._search_documents(me._mention_doctype, doc_match[2] || ''); }, 200);
+        return;
+      }
+
       var match = before.match(/@([A-Za-z\s]{1,40})$/);
       if (match) {
         var q = match[1].trim();
+        me._mention_mode = 'doctype';
+        me._mention_doctype = null;
         if (q.length >= 1) {
           me._mention_timer = setTimeout(function () { me._search_doctypes(q); }, 200);
         }
       } else {
+        me._mention_mode = 'doctype';
+        me._mention_doctype = null;
         me.$panel.find('#panel-mention-dropdown').hide().empty();
       }
     });
@@ -1050,7 +1084,7 @@ oly_ai.Panel = class {
           me.$body.empty();
           if (!msgs.length) { me.show_welcome(); return; }
           msgs.forEach(function (m) {
-            if (m.role === 'user') me._user_msg(m.content || '');
+            if (m.role === 'user') me._user_msg(m.content || '', m.idx);
             else me._ai_msg_full(m.content || '', m);
           });
           me._scroll();
@@ -1156,11 +1190,12 @@ oly_ai.Panel = class {
   }
 
   // ── Send ──
-  send() {
-    var q = this.$input.val().trim();
+  send(retry_text) {
+    var q = retry_text || this.$input.val().trim();
     if (!q || this.sending) return;
+    this._last_message = q;
     this._set_sending(true);
-    this.$input.val('').css('height', 'auto');
+    if (!retry_text) this.$input.val('').css('height', 'auto');
 
     var me = this;
     var sel_model = this.current_model;
@@ -1281,9 +1316,15 @@ oly_ai.Panel = class {
       if (!data || !me._stream_task || data.task_id !== me._stream_task) return;
       var $el = $("#panel-stream-" + data.task_id);
       if ($el.length) {
+        var err_msg = frappe.utils.escape_html(data.error || 'Something went wrong');
         $el.removeClass("ai-streaming-cursor").closest('.oly-ai-msg-content').html(
-          '<div class="oly-ai-msg-error">' + frappe.utils.escape_html(data.error || 'Something went wrong') + '</div>'
+          '<div class="oly-ai-msg-error">' + err_msg +
+          '<div class="oly-retry-btn" style="margin-top:6px;cursor:pointer;color:var(--primary-color);font-size:0.8rem;font-weight:600;">' + __('↻ Try again') + '</div></div>'
         );
+        $el.closest('.oly-ai-msg-content').find('.oly-retry-btn').on('click', function () {
+          $(this).closest('[data-msg-idx]').remove();
+          me.send(me._last_message || '');
+        });
       }
       me._stream_task = null;
       me._stream_buffer = "";
@@ -1344,25 +1385,33 @@ oly_ai.Panel = class {
   }
 
   // ── Messages ──
-  _user_msg(text) {
+  _user_msg(text, idx) {
     var escaped = frappe.utils.escape_html(text);
+    var idx_attr = idx ? ' data-msg-idx="' + idx + '"' : '';
     this.$body.append(
-      '<div class="oly-ai-msg oly-ai-msg-user" style="display:flex;flex-direction:column;align-items:flex-end;margin-bottom:12px;">' +
+      '<div class="oly-ai-msg oly-ai-msg-user"' + idx_attr + ' style="display:flex;flex-direction:column;align-items:flex-end;margin-bottom:12px;">' +
         '<div class="oly-ai-msg-bubble-user" style="background:var(--primary-color);color:white;padding:10px 14px;font-size:0.8125rem;border-radius:18px 18px 4px 18px;max-width:82%;word-wrap:break-word;line-height:1.5;">' + escaped + '</div>' +
-        '<span class="oly-ai-user-copy" data-text="' + escaped + '" style="display:flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-muted);font-size:0.6875rem;padding:3px 4px;margin-top:2px;opacity:0;transition:opacity 0.15s;">' + ICON.copy + '</span>' +
+        '<div class="oly-ai-user-actions" style="display:flex;align-items:center;gap:6px;margin-top:2px;opacity:0;transition:opacity 0.15s;">' +
+          '<span class="oly-ai-user-copy" data-text="' + escaped + '" style="display:flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-muted);font-size:0.6875rem;padding:3px 4px;">' + ICON.copy + '</span>' +
+          (idx ? '<span class="oly-ai-edit-btn" data-idx="' + idx + '" data-text="' + escaped + '" style="display:flex;align-items:center;gap:2px;cursor:pointer;color:var(--text-muted);font-size:0.6875rem;padding:3px 4px;" title="' + __('Edit & resend') + '"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></span>' : '') +
+        '</div>' +
       '</div>'
     );
-    // Show copy icon on hover
-    this.$body.find('.oly-ai-msg-user:last').on('mouseenter', function () {
-      $(this).find('.oly-ai-user-copy').css('opacity', '1');
+    var $row = this.$body.find('.oly-ai-msg-user:last');
+    $row.on('mouseenter', function () {
+      $(this).find('.oly-ai-user-actions').css('opacity', '1');
     }).on('mouseleave', function () {
-      $(this).find('.oly-ai-user-copy').css('opacity', '0');
+      $(this).find('.oly-ai-user-actions').css('opacity', '0');
     });
-    this.$body.find('.oly-ai-user-copy:last').on('click', function () {
+    $row.find('.oly-ai-user-copy').on('click', function () {
       frappe.utils.copy_to_clipboard($(this).data('text'));
       var $b = $(this);
       $b.html(ICON.check);
       setTimeout(function () { $b.html(ICON.copy); }, 1500);
+    });
+    var me = this;
+    $row.find('.oly-ai-edit-btn').on('click', function () {
+      me._edit_message($(this).data('idx'), $(this).data('text'));
     });
     this._scroll();
   }
@@ -1370,11 +1419,14 @@ oly_ai.Panel = class {
   _build_ai_msg(r) {
     var content = (r && r.content) || '';
     var meta = [r && r.model, r && r.cost ? '$' + Number(r.cost).toFixed(4) : ''].filter(Boolean).join(' · ');
+    var idx = r && r.idx;
+    var idx_attr = idx ? ' data-msg-idx="' + idx + '"' : '';
+    var regen_btn = idx ? '<span class="oly-ai-regen-btn" data-idx="' + idx + '" style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-muted);font-size:0.75rem;" title="' + __('Regenerate') + '"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg></span>' : '';
     var is_image = r && r.type === 'image' && r.image_url;
     var rendered = is_image
       ? '<div style="margin:4px 0;"><img src="' + r.image_url + '" style="max-width:100%;max-height:300px;border-radius:10px;border:1px solid var(--border-color);cursor:pointer;" onclick="window.open(this.src,\'_blank\')" /></div>'
       : oly_ai.render_markdown(content);
-    return '<div class="oly-ai-msg oly-ai-msg-ai" style="display:flex;gap:8px;margin-bottom:12px;align-items:flex-start;">' +
+    return '<div class="oly-ai-msg oly-ai-msg-ai"' + idx_attr + ' style="display:flex;gap:8px;margin-bottom:12px;align-items:flex-start;">' +
       '<div class="oly-ai-msg-avatar oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:' + oly_ai.brand_gradient() + ';">' +
         '<svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>' +
       '</div>' +
@@ -1382,6 +1434,7 @@ oly_ai.Panel = class {
         '<div class="oly-ai-msg-footer" style="display:flex;align-items:center;gap:8px;margin-top:6px;padding-top:4px;border-top:1px solid var(--border-color);">' +
           '<span class="oly-ai-copy-btn" style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-muted);font-size:0.75rem;" data-text="' + frappe.utils.escape_html(content) + '">' + ICON.copy + ' ' + __("Copy") + '</span>' +
           '<span class="oly-ai-tts-btn" style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-muted);font-size:0.75rem;" title="' + __("Listen") + '">' + ICON.speaker + '</span>' +
+          regen_btn +
           '<span class="oly-ai-fb-btn" data-fb="up" style="display:inline-flex;align-items:center;cursor:pointer;color:var(--text-muted);padding:2px;" title="' + __("Helpful") + '">' + ICON.thumbs_up + '</span>' +
           '<span class="oly-ai-fb-btn" data-fb="down" style="display:inline-flex;align-items:center;cursor:pointer;color:var(--text-muted);padding:2px;" title="' + __("Not helpful") + '">' + ICON.thumbs_down + '</span>' +
           (meta ? '<span class="oly-ai-msg-meta" style="margin-left:auto;font-size:0.6875rem;color:var(--text-muted);">' + meta + '</span>' : '') +
@@ -1400,6 +1453,83 @@ oly_ai.Panel = class {
       var $b = $(this);
       $b.html(ICON.check + ' Copied');
       setTimeout(function () { $b.html(ICON.copy + ' Copy'); }, 2000);
+    });
+    // Regenerate button
+    var me = this;
+    this.$body.find('.oly-ai-regen-btn').off('click').on('click', function () {
+      me._regenerate($(this).data('idx'));
+    });
+  }
+
+  _edit_message(idx, original_text) {
+    var me = this;
+    var d = new frappe.ui.Dialog({
+      title: __("Edit Message"),
+      fields: [{ fieldtype: 'Small Text', fieldname: 'content', default: original_text }],
+      size: 'small',
+      primary_action_label: __("Send"),
+      primary_action: function (values) {
+        if (!values.content || !values.content.trim()) return;
+        d.hide();
+        me._set_sending(true);
+        // Remove messages from idx onward in DOM
+        me.$body.find('.oly-ai-msg').each(function () {
+          var $el = $(this);
+          var mi = parseInt($el.attr('data-msg-idx'));
+          if (mi && mi >= idx) $el.remove();
+        });
+        me._user_msg(values.content.trim());
+        me.$body.append('<div class="oly-ai-loading" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;"><div class="oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:' + oly_ai.brand_gradient() + ';"><svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg></div><div class="oly-ai-typing"><span></span><span></span><span></span></div></div>');
+        me._scroll();
+        frappe.call({
+          method: "oly_ai.api.chat.edit_message",
+          args: { session_name: me.session, message_idx: idx, new_content: values.content.trim(), model: me.current_model, mode: me.current_mode },
+          callback: function (r) {
+            me.$body.find('.oly-ai-loading').remove();
+            me._set_sending(false);
+            if (r && r.message) {
+              me._ai_msg_full(r.message.content || '', r.message);
+              me._scroll();
+            }
+          },
+          error: function () {
+            me.$body.find('.oly-ai-loading').remove();
+            me._set_sending(false);
+            me.$body.append('<div class="oly-ai-msg-error" style="margin:8px 34px;padding:8px 12px;font-size:0.8rem;color:var(--red);border:1px solid var(--red);border-radius:8px;">' + __("Failed to edit message") + '</div>');
+          },
+        });
+      },
+    });
+    d.show();
+  }
+
+  _regenerate(idx) {
+    var me = this;
+    me._set_sending(true);
+    // Remove the AI message (and anything after it) in DOM
+    me.$body.find('.oly-ai-msg').each(function () {
+      var $el = $(this);
+      var mi = parseInt($el.attr('data-msg-idx'));
+      if (mi && mi >= idx) $el.remove();
+    });
+    me.$body.append('<div class="oly-ai-loading" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;"><div class="oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:' + oly_ai.brand_gradient() + ';"><svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg></div><div class="oly-ai-typing"><span></span><span></span><span></span></div></div>');
+    me._scroll();
+    frappe.call({
+      method: "oly_ai.api.chat.regenerate_response",
+      args: { session_name: me.session, message_idx: idx, model: me.current_model, mode: me.current_mode },
+      callback: function (r) {
+        me.$body.find('.oly-ai-loading').remove();
+        me._set_sending(false);
+        if (r && r.message) {
+          // Re-open session to get fresh idx values
+          me._open_session(me.session);
+        }
+      },
+      error: function () {
+        me.$body.find('.oly-ai-loading').remove();
+        me._set_sending(false);
+        me.$body.append('<div class="oly-ai-msg-error" style="margin:8px 34px;padding:8px 12px;font-size:0.8rem;color:var(--red);border:1px solid var(--red);border-radius:8px;">' + __("Failed to regenerate") + '</div>');
+      },
     });
   }
 
@@ -1573,7 +1703,58 @@ oly_ai.Panel = class {
     var pos = el.selectionStart;
     var before = val.substring(0, pos);
     var after = val.substring(pos);
-    var new_before = before.replace(/@[A-Za-z\s]{1,40}$/, '@' + doctype + ' ');
+    var new_before = before.replace(/@[A-Za-z\s]{1,40}$/, '@' + doctype + ':');
+    el.value = new_before + after;
+    var new_pos = new_before.length;
+    el.setSelectionRange(new_pos, new_pos);
+    el.focus();
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    // Auto-trigger document search
+    this._mention_mode = 'document';
+    this._mention_doctype = doctype;
+    this._search_documents(doctype, '');
+  }
+
+  _search_documents(doctype, query) {
+    var me = this;
+    frappe.xcall('oly_ai.api.chat.get_document_suggestions', { doctype: doctype, query: query }).then(function (results) {
+      var $dd = me.$panel.find('#panel-mention-dropdown');
+      if (!results || !results.length) {
+        $dd.html('<div style="padding:10px 14px;color:var(--text-muted);font-size:0.75rem;">' + __('Type to search or press Space for schema only') + '</div>').show();
+        return;
+      }
+      var html = '<div style="padding:6px 12px;font-size:0.7rem;color:var(--text-muted);border-bottom:1px solid var(--border-color);">' + frappe.utils.escape_html(doctype) + ' — ' + __('Select or Space for schema') + '</div>';
+      results.forEach(function (r, i) {
+        var display = frappe.utils.escape_html(r.name);
+        if (r.title) display += ' <span style="color:var(--text-muted);font-size:0.7rem;">— ' + frappe.utils.escape_html(r.title) + '</span>';
+        html += '<div class="oly-mention-item' + (i === 0 ? ' active' : '') + '" data-docname="' + frappe.utils.escape_html(r.name) + '"' +
+          ' style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;font-size:0.8125rem;color:var(--text-color);transition:background .1s;">' +
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>' +
+          '<span>' + display + '</span>' +
+        '</div>';
+      });
+      $dd.html(html).show();
+      $dd.find('.oly-mention-item').on('click', function () {
+        me._insert_doc_mention($(this).data('docname'));
+      }).on('mouseenter', function () {
+        $dd.find('.oly-mention-item').removeClass('active');
+        $(this).addClass('active');
+      });
+    });
+  }
+
+  _insert_doc_mention(docname) {
+    var $dd = this.$panel.find('#panel-mention-dropdown');
+    $dd.hide().empty();
+    this._mention_mode = 'doctype';
+    this._mention_doctype = null;
+    var el = this.$input[0];
+    var val = el.value;
+    var pos = el.selectionStart;
+    var before = val.substring(0, pos);
+    var after = val.substring(pos);
+    var new_before = before.replace(/@([A-Z][a-z]+(?:\s[A-Z][a-z]+){0,4}):[^\s]*$/, '@$1:' + docname + ' ');
     el.value = new_before + after;
     var new_pos = new_before.length;
     el.setSelectionRange(new_pos, new_pos);

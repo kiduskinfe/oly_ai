@@ -48,11 +48,15 @@ Return a JSON array of objects: [{"text": "...", "category": "..."}]
 If nothing worth remembering, return: []"""
 
 
-def get_user_memories(user=None):
+def get_user_memories(user=None, message_context=""):
 	"""Retrieve active memories for a user, formatted for injection into the system prompt.
+
+	If message_context is provided, memories are scored for relevance and
+	only the most relevant are included (up to MAX_MEMORIES_IN_PROMPT).
 
 	Args:
 		user: User email. Defaults to current session user.
+		message_context: The current user message, for relevance scoring.
 
 	Returns:
 		str: Formatted memory text for inclusion in system prompt, or empty string.
@@ -64,11 +68,17 @@ def get_user_memories(user=None):
 		filters={"user": user, "active": 1},
 		fields=["name", "memory_text", "category"],
 		order_by="modified desc",
-		limit_page_length=MAX_MEMORIES_IN_PROMPT,
+		limit_page_length=100,  # fetch more, then filter by relevance
 	)
 
 	if not memories:
 		return ""
+
+	# Score and sort by relevance if context is provided
+	if message_context and len(memories) > MAX_MEMORIES_IN_PROMPT:
+		memories = _score_memories(memories, message_context)
+	else:
+		memories = memories[:MAX_MEMORIES_IN_PROMPT]
 
 	# Update last_accessed timestamp (batch update, no save overhead)
 	memory_names = [m.name for m in memories]
@@ -95,6 +105,53 @@ def get_user_memories(user=None):
 	parts.append("\nUse these memories naturally — don't explicitly mention that you 'remember' unless the user asks.")
 
 	return "\n".join(parts)
+
+
+def _score_memories(memories, context):
+	"""Score memories by keyword relevance to the current message context.
+
+	Uses a simple TF-based scoring: count how many words in the memory
+	also appear in the context. Memories with higher overlap rank first.
+	Always includes Instruction and Preference category memories regardless
+	of score (they're universally relevant).
+
+	Args:
+		memories: list of memory dicts
+		context: the current user message string
+
+	Returns:
+		list: top N memories sorted by relevance
+	"""
+	import re as _re
+
+	# Tokenize context into lowercase word set
+	context_words = set(_re.findall(r'[a-z]{3,}', context.lower()))
+	if not context_words:
+		return memories[:MAX_MEMORIES_IN_PROMPT]
+
+	scored = []
+	always_include = []
+
+	for m in memories:
+		# Always include Instructions and Preferences — they're universal
+		cat = (m.category or "").lower()
+		if cat in ("instruction", "preference"):
+			always_include.append(m)
+			continue
+
+		# Score by word overlap
+		mem_words = set(_re.findall(r'[a-z]{3,}', (m.memory_text or "").lower()))
+		overlap = len(context_words & mem_words)
+		scored.append((overlap, m))
+
+	# Sort by score descending
+	scored.sort(key=lambda x: x[0], reverse=True)
+
+	# Combine: always-include first, then top-scored
+	remaining_slots = MAX_MEMORIES_IN_PROMPT - len(always_include)
+	result = always_include + [m for _, m in scored[:max(remaining_slots, 0)]]
+
+	return result[:MAX_MEMORIES_IN_PROMPT]
 
 
 def extract_memories_from_session(session_name):
