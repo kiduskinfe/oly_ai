@@ -179,8 +179,8 @@ def ask_erp(question):
 	try:
 		from oly_ai.core.rag.retriever import build_rag_context
 		rag_context, sources = build_rag_context(question, top_k=5, min_score=0.7)
-	except Exception:
-		pass  # RAG is optional — if it fails, continue without it
+	except Exception as e:
+		frappe.logger("oly_ai").debug(f"RAG retrieval failed (non-blocking): {e}")
 
 	system_prompt = """You are an AI assistant for ERPNext ERP system at OLY Technologies.
 You help employees with questions about:

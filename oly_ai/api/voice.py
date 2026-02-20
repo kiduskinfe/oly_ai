@@ -98,6 +98,11 @@ def text_to_speech(text, voice="alloy"):
 	"""
 	user = frappe.session.user
 
+	# Validate voice parameter
+	VALID_VOICES = {"alloy", "echo", "fable", "onyx", "nova", "shimmer"}
+	if voice not in VALID_VOICES:
+		frappe.throw(_("Invalid voice '{0}'. Must be one of: {1}").format(voice, ", ".join(sorted(VALID_VOICES))))
+
 	# Budget check
 	allowed, reason = check_budget(user)
 	if not allowed:

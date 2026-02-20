@@ -80,8 +80,8 @@ def track_usage(model, tokens_input, tokens_output, user=None):
 
 		# Budget warning notification
 		_check_budget_warning(settings, current_spend)
-	except Exception:
-		pass  # Non-critical — don't block AI calls for counter updates
+	except Exception as e:
+		frappe.logger("oly_ai").debug(f"Usage counter update failed (non-blocking): {e}")
 
 	return cost
 

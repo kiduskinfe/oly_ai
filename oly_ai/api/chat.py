@@ -232,21 +232,64 @@ def get_sessions(search=None, limit=50, offset=0, filter_type=None):
 		start=int(offset),
 	)
 
-	# Get last message preview + shared flag
-	for s in sessions:
-		last_msg = frappe.db.sql(
-			"""SELECT content FROM `tabAI Chat Message`
-			WHERE parent=%s ORDER BY idx DESC LIMIT 1""",
-			s.name,
+	if not sessions:
+		return sessions
+
+	session_names = [s.name for s in sessions]
+	placeholders = ", ".join(["%s"] * len(session_names))
+
+	# Batch: last message preview per session (1 query instead of N)
+	previews = frappe.db.sql(
+		f"""SELECT m.parent, m.content
+		FROM `tabAI Chat Message` m
+		INNER JOIN (
+			SELECT parent, MAX(idx) AS max_idx
+			FROM `tabAI Chat Message`
+			WHERE parent IN ({placeholders})
+			GROUP BY parent
+		) latest ON m.parent = latest.parent AND m.idx = latest.max_idx""",
+		tuple(session_names),
+		as_dict=True,
+	)
+	preview_map = {r.parent: (r.content[:80] + "..." if r.content else "") for r in previews}
+
+	# Batch: message counts (1 query instead of N)
+	msg_counts = frappe.db.sql(
+		f"""SELECT parent, COUNT(*) AS cnt FROM `tabAI Chat Message`
+		WHERE parent IN ({placeholders}) GROUP BY parent""",
+		tuple(session_names),
+		as_dict=True,
+	)
+	count_map = {r.parent: r.cnt for r in msg_counts}
+
+	# Batch: shared counts (1 query instead of N)
+	shared_counts = frappe.db.sql(
+		f"""SELECT parent, COUNT(*) AS cnt FROM `tabAI Chat Shared User`
+		WHERE parent IN ({placeholders}) GROUP BY parent""",
+		tuple(session_names),
+		as_dict=True,
+	)
+	shared_map = {r.parent: r.cnt for r in shared_counts}
+
+	# Batch: owner full names for sessions owned by others (1 query instead of N)
+	other_users = list({s.user for s in sessions if s.user != user})
+	name_map = {}
+	if other_users:
+		name_placeholders = ", ".join(["%s"] * len(other_users))
+		names = frappe.db.sql(
+			f"""SELECT name, full_name FROM `tabUser`
+			WHERE name IN ({name_placeholders})""",
+			tuple(other_users),
 			as_dict=True,
 		)
-		s["preview"] = (last_msg[0].content[:80] + "...") if last_msg else ""
-		msg_count = frappe.db.count("AI Chat Message", {"parent": s.name})
-		s["message_count"] = msg_count
+		name_map = {r.name: r.full_name for r in names}
+
+	for s in sessions:
+		s["preview"] = preview_map.get(s.name, "")
+		s["message_count"] = count_map.get(s.name, 0)
 		s["is_owner"] = s["user"] == user
-		s["owner_name"] = frappe.db.get_value("User", s["user"], "full_name") if s["user"] != user else ""
-		# Number of users this session is shared with (useful for showing shared icon)
-		s["shared_count"] = frappe.db.count("AI Chat Shared User", {"parent": s.name})
+		s["owner_name"] = name_map.get(s["user"], "") if s["user"] != user else ""
+		s["shared_count"] = shared_map.get(s.name, 0)
 
 	return sessions
 
@@ -1122,15 +1165,22 @@ def _sanitize_image_prompt(prompt, settings):
 		return prompt
 
 
-def _generate_image_internal(session, prompt, user, settings, size="1024x1024", quality="standard"):
-	"""Internal image generation — called from send_message auto-detect.
+def _do_generate_image(session, prompt, user, settings, size="1024x1024", quality="standard"):
+	"""Core image generation logic shared by both internal and external callers.
 
-	Unlike generate_image(), this receives an already-loaded session
-	and handles user message addition to avoid duplicates.
+	Generates the image, saves it, tracks cost, appends messages to session, and saves.
+
+	Args:
+		session: Loaded AI Chat Session doc (user message should already be appended by caller)
+		prompt: Original user prompt
+		user: Current user email
+		settings: AI Settings doc
+		size: Image size
+		quality: standard or hd
+
+	Returns:
+		dict with content, image_url, revised_prompt, model, cost, response_time, type, session_title
 	"""
-	# Add user message
-	session.append("messages", {"role": "user", "content": prompt})
-
 	start_time = time.time()
 
 	provider = LLMProvider(settings)
@@ -1150,7 +1200,7 @@ def _generate_image_internal(session, prompt, user, settings, size="1024x1024", 
 	# Save image to Frappe files so it persists
 	local_url = _save_generated_image(result["url"], prompt, user)
 
-	# Estimate cost
+	# Estimate cost (DALL-E 3 pricing)
 	cost_map = {
 		"standard": {"1024x1024": 0.04, "1024x1792": 0.08, "1792x1024": 0.08},
 		"hd": {"1024x1024": 0.08, "1024x1792": 0.12, "1792x1024": 0.12},
@@ -1158,14 +1208,15 @@ def _generate_image_internal(session, prompt, user, settings, size="1024x1024", 
 	estimated_cost = cost_map.get(quality, {}).get(size, 0.04)
 
 	# Track image generation cost in the budget system
-	# Use equivalent token count to represent the dollar cost (1 token ≈ $0.00001 for dall-e-3)
 	equiv_tokens = int(estimated_cost / 0.00001) if estimated_cost else 4000
 	track_usage("dall-e-3", equiv_tokens, 0, user)
 
+	# Build response content
 	content = f"Here's the generated image:\n\n![Generated Image]({local_url})\n\n"
 	if result.get("revised_prompt") and result["revised_prompt"] != prompt:
 		content += f"*Refined prompt: {result['revised_prompt']}*"
 
+	# Add AI response to session
 	session.append("messages", {
 		"role": "assistant",
 		"content": content,
@@ -1195,6 +1246,17 @@ def _generate_image_internal(session, prompt, user, settings, size="1024x1024", 
 	}
 
 
+def _generate_image_internal(session, prompt, user, settings, size="1024x1024", quality="standard"):
+	"""Internal image generation — called from send_message auto-detect.
+
+	Unlike generate_image(), this receives an already-loaded session
+	and handles user message addition to avoid duplicates.
+	"""
+	# Add user message
+	session.append("messages", {"role": "user", "content": prompt})
+	return _do_generate_image(session, prompt, user, settings, size=size, quality=quality)
+
+
 @frappe.whitelist()
 def generate_image(session_name, prompt, size="1024x1024", quality="standard"):
 	"""Generate an image using DALL-E and add it to the chat session.
@@ -1209,6 +1271,14 @@ def generate_image(session_name, prompt, size="1024x1024", quality="standard"):
 		dict: {"content", "image_url", "revised_prompt", "model", "cost"}
 	"""
 	user = frappe.session.user
+
+	# Validate size and quality parameters
+	VALID_SIZES = {"1024x1024", "1024x1792", "1792x1024"}
+	VALID_QUALITIES = {"standard", "hd"}
+	if size not in VALID_SIZES:
+		frappe.throw(_("Invalid image size '{0}'. Must be one of: {1}").format(size, ", ".join(sorted(VALID_SIZES))))
+	if quality not in VALID_QUALITIES:
+		frappe.throw(_("Invalid quality '{0}'. Must be one of: {1}").format(quality, ", ".join(sorted(VALID_QUALITIES))))
 
 	# Verify ownership
 	session_user = frappe.db.get_value("AI Chat Session", session_name, "user")
@@ -1230,70 +1300,8 @@ def generate_image(session_name, prompt, size="1024x1024", quality="standard"):
 	# Add user message
 	session.append("messages", {"role": "user", "content": prompt})
 
-	start_time = time.time()
-
 	try:
-		provider = LLMProvider(settings)
-
-		# Sanitize prompt to avoid DALL-E safety filter rejections
-		safe_prompt = _sanitize_image_prompt(prompt, settings)
-
-		result = provider.generate_image(
-			prompt=safe_prompt,
-			model="dall-e-3",
-			size=size,
-			quality=quality,
-		)
-
-		response_time = round(time.time() - start_time, 2)
-
-		# Save image to Frappe files so it persists
-		local_url = _save_generated_image(result["url"], prompt, user)
-
-		# Estimate cost (DALL-E 3: ~$0.04 standard, ~$0.08 HD for 1024x1024)
-		cost_map = {
-			"standard": {"1024x1024": 0.04, "1024x1792": 0.08, "1792x1024": 0.08},
-			"hd": {"1024x1024": 0.08, "1024x1792": 0.12, "1792x1024": 0.12},
-		}
-		estimated_cost = cost_map.get(quality, {}).get(size, 0.04)
-
-		# Track image generation cost in the budget system
-		equiv_tokens = int(estimated_cost / 0.00001) if estimated_cost else 4000
-		track_usage("dall-e-3", equiv_tokens, 0, user)
-
-		# Build response content
-		content = f"Here's the generated image:\n\n![Generated Image]({local_url})\n\n"
-		if result.get("revised_prompt") and result["revised_prompt"] != prompt:
-			content += f"*Refined prompt: {result['revised_prompt']}*"
-
-		# Add AI response to session
-		session.append("messages", {
-			"role": "assistant",
-			"content": content,
-			"model": "dall-e-3",
-			"cost": estimated_cost,
-			"response_time": response_time,
-		})
-
-		session.total_cost = (session.total_cost or 0) + estimated_cost
-
-		if session.title == "New Chat":
-			session.title = prompt[:60] + ("..." if len(prompt) > 60 else "")
-
-		session.flags.ignore_permissions = True
-		session.save()
-		frappe.db.commit()
-
-		return {
-			"content": content,
-			"image_url": local_url,
-			"revised_prompt": result.get("revised_prompt", prompt),
-			"model": "dall-e-3",
-			"cost": estimated_cost,
-			"response_time": response_time,
-			"type": "image",
-			"session_title": session.title,
-		}
+		return _do_generate_image(session, prompt, user, settings, size=size, quality=quality)
 
 	except Exception as e:
 		session.flags.ignore_permissions = True

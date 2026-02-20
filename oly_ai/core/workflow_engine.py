@@ -15,6 +15,7 @@ def execute_workflow(workflow_name):
 	"""Execute an AI Workflow by running all its steps in sequence.
 
 	Each step can reference previous step outputs using {{variable_name}}.
+	Steps execute as the workflow owner (not Administrator) for proper permission enforcement.
 
 	Args:
 		workflow_name: Name of the AI Workflow doc
@@ -25,79 +26,88 @@ def execute_workflow(workflow_name):
 	workflow = frappe.get_doc("AI Workflow", workflow_name)
 	start_time = time.time()
 
-	# Track step outputs for variable substitution
-	context = {}
-	results = []
-	all_success = True
+	# Execute as the workflow creator for proper permission enforcement
+	original_user = frappe.session.user
+	try:
+		frappe.set_user(workflow.owner)
 
-	workflow.status = "Active"
-	workflow.last_run = now_datetime()
-	workflow.error_message = ""
-	workflow.flags.ignore_permissions = True
-	workflow.save()
-	frappe.db.commit()
+		# Track step outputs for variable substitution
+		context = {}
+		results = []
+		all_success = True
 
-	for step in workflow.steps:
-		step.status = "Running"
-		step.result = ""
+		workflow.status = "Active"
+		workflow.last_run = now_datetime()
+		workflow.error_message = ""
 		workflow.flags.ignore_permissions = True
 		workflow.save()
 		frappe.db.commit()
 
+		for step in workflow.steps:
+			step.status = "Running"
+			step.result = ""
+			workflow.flags.ignore_permissions = True
+			workflow.save()
+			frappe.db.commit()
+
+			try:
+				result = _execute_step(step, context, workflow)
+				step.status = "Completed"
+				step.result = str(result)[:10000]  # Truncate if too long
+
+				# Store output variable
+				var_name = step.output_variable or f"step_{step.idx}"
+				context[var_name] = result
+
+				results.append({
+					"step": step.idx,
+					"type": step.step_type,
+					"status": "Completed",
+					"output_var": var_name,
+					"result_preview": str(result)[:200],
+				})
+
+			except Exception as e:
+				step.status = "Failed"
+				step.result = str(e)
+				all_success = False
+
+				results.append({
+					"step": step.idx,
+					"type": step.step_type,
+					"status": "Failed",
+					"error": str(e),
+				})
+
+				# Stop on failure
+				workflow.error_message = f"Step {step.idx} ({step.step_type}) failed: {e}"
+				break
+
+		total_time = round(time.time() - start_time, 2)
+
+		workflow.status = "Completed" if all_success else "Failed"
+		workflow.run_count = (workflow.run_count or 0) + 1
+		workflow.last_result = json.dumps(results, default=str, indent=2)[:20000]
+		workflow.flags.ignore_permissions = True
+		workflow.save()
+		frappe.db.commit()
+
+		# Send notification
 		try:
-			result = _execute_step(step, context, workflow)
-			step.status = "Completed"
-			step.result = str(result)[:10000]  # Truncate if too long
+			from oly_ai.core.notifications import notify_workflow_complete
+			notify_workflow_complete(workflow, results, all_success)
+		except Exception:
+			pass
 
-			# Store output variable
-			var_name = step.output_variable or f"step_{step.idx}"
-			context[var_name] = result
+		return {
+			"status": "success" if all_success else "failed",
+			"results": results,
+			"total_time": total_time,
+		}
 
-			results.append({
-				"step": step.idx,
-				"type": step.step_type,
-				"status": "Completed",
-				"output_var": var_name,
-				"result_preview": str(result)[:200],
-			})
-
-		except Exception as e:
-			step.status = "Failed"
-			step.result = str(e)
-			all_success = False
-
-			results.append({
-				"step": step.idx,
-				"type": step.step_type,
-				"status": "Failed",
-				"error": str(e),
-			})
-
-			# Stop on failure
-			workflow.error_message = f"Step {step.idx} ({step.step_type}) failed: {e}"
-			break
-
-	total_time = round(time.time() - start_time, 2)
-
-	workflow.status = "Completed" if all_success else "Failed"
-	workflow.run_count = (workflow.run_count or 0) + 1
-	workflow.last_result = json.dumps(results, default=str, indent=2)[:20000]
-	workflow.flags.ignore_permissions = True
-	workflow.save()
-	frappe.db.commit()
-
-	# Send notification
-	try:
-		from oly_ai.core.notifications import notify_workflow_complete
-		notify_workflow_complete(workflow, results, all_success)
-	except Exception:
-		pass
-
-	return {
-		"status": "success" if all_success else "failed",
-		"results": results,
-		"total_time": total_time,
-	}
+	finally:
+		# Always restore original user context
+		frappe.set_user(original_user)
 
 
 def _execute_step(step, context, workflow):
@@ -208,6 +218,10 @@ def _step_data_aggregation(doctype, filters_json, prompt):
 	if not doctype:
 		raise ValueError("Target DocType is required for Data Aggregation")
 
+	# Validate doctype exists
+	if not frappe.db.exists("DocType", doctype):
+		raise ValueError(f"DocType '{doctype}' does not exist")
+
 	try:
 		config = json.loads(filters_json) if filters_json else {}
 	except json.JSONDecodeError:
@@ -217,15 +231,33 @@ def _step_data_aggregation(doctype, filters_json, prompt):
 	aggregate_field = config.get("aggregate_field")
 	filters = config.get("filters", {})
 
+	# Import field validator from tools module
+	from oly_ai.core.tools import _validate_doctype_field, _ALLOWED_SQL_OPERATORS
+
+	# Validate group_by field
+	if not _validate_doctype_field(doctype, group_by):
+		raise ValueError(f"Field '{group_by}' does not exist on {doctype}")
+
 	agg_expr = ""
 	if aggregate_field:
+		if not _validate_doctype_field(doctype, aggregate_field):
+			raise ValueError(f"Field '{aggregate_field}' does not exist on {doctype}")
 		agg_expr = f", SUM(`{aggregate_field}`) as total, AVG(`{aggregate_field}`) as average"
 
 	conditions = "WHERE 1=1"
 	values = []
 	for key, val in filters.items():
-		conditions += f" AND `{key}` = %s"
-		values.append(val)
+		if not _validate_doctype_field(doctype, key):
+			raise ValueError(f"Filter field '{key}' does not exist on {doctype}")
+		if isinstance(val, list) and len(val) == 2:
+			operator = str(val[0]).strip().lower()
+			if operator not in _ALLOWED_SQL_OPERATORS:
+				raise ValueError(f"SQL operator '{val[0]}' is not allowed")
+			conditions += f" AND `{key}` {operator} %s"
+			values.append(val[1])
+		else:
+			conditions += f" AND `{key}` = %s"
+			values.append(val)
 
 	sql = f"""
 		SELECT `{group_by}` as group_value, COUNT(*) as count {agg_expr}
@@ -274,6 +306,9 @@ def _step_create_document(doctype, data_json):
 	if not doctype:
 		raise ValueError("Target DocType is required")
 
+	if not frappe.has_permission(doctype, "create"):
+		raise frappe.PermissionError(f"No permission to create {doctype}")
+
 	try:
 		data = json.loads(data_json) if data_json else {}
 	except json.JSONDecodeError:
@@ -293,6 +328,9 @@ def _step_update_document(doctype, data_json):
 	"""Update an existing document."""
 	if not doctype:
 		raise ValueError("Target DocType is required")
+
+	if not frappe.has_permission(doctype, "write"):
+		raise frappe.PermissionError(f"No permission to update {doctype}")
 
 	try:
 		data = json.loads(data_json) if data_json else {}
@@ -314,22 +352,34 @@ def _step_update_document(doctype, data_json):
 
 
 def _step_conditional(condition, context):
-	"""Evaluate a condition and return result."""
-	# Simple condition evaluation using context variables
+	"""Evaluate a condition and return result.
+
+	Uses a safe evaluator that only supports simple comparisons.
+	Supported: ==, !=, >, <, >=, <=, 'in', 'not in', 'and', 'or'
+	Variables are resolved from context dict.
+	"""
 	try:
 		import ast
-		# Resolve variables in condition
+
 		resolved = _resolve_variables(condition, context)
-		# Safe evaluation using ast.literal_eval for simple expressions,
-		# or compile + restricted eval for comparisons
-		node = ast.parse(resolved, mode="eval")
-		# Only allow safe node types (no calls, imports, attribute access)
-		for child in ast.walk(node):
-			if isinstance(child, (ast.Call, ast.Import, ast.ImportFrom,
-					ast.Attribute, ast.Lambda, ast.ListComp, ast.SetComp,
-					ast.DictComp, ast.GeneratorExp)):
-				return f"Condition contains disallowed expression: {type(child).__name__}"
-		code = compile(node, "<condition>", "eval")
+		tree = ast.parse(resolved, mode="eval")
+
+		# Strict allowlist of safe AST node types
+		_SAFE_NODES = (
+			ast.Expression, ast.BoolOp, ast.Compare, ast.UnaryOp,
+			ast.And, ast.Or, ast.Not,
+			ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+			ast.In, ast.NotIn, ast.Is, ast.IsNot,
+			ast.Constant, ast.Num, ast.Str, ast.NameConstant,  # literals
+			ast.Name, ast.Load,
+			ast.List, ast.Tuple,  # for "x in [a, b, c]"
+		)
+		for node in ast.walk(tree):
+			if not isinstance(node, _SAFE_NODES):
+				return f"Condition contains disallowed expression: {type(node).__name__}"
+
+		# Only allow name lookups from the context dict — no builtins
+		code = compile(tree, "<condition>", "eval")
 		result = bool(eval(code, {"__builtins__": {}}, context))
 		return f"Condition evaluated to: {result}"
 	except Exception as e:

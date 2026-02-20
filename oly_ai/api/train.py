@@ -65,8 +65,8 @@ def discover_doctypes():
 			count = frappe.db.count(dt)
 			if count > 0:
 				discovered.append({"doctype": dt, "count": count})
-		except Exception:
-			# Table might not exist or other DB issues
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"Skipping DocType {dt}: {e}")
 			continue
 
 	# Now add to AI Settings indexed_doctypes table (skip already present)
