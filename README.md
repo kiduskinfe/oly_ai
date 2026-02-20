@@ -1,576 +1,863 @@
-# OLY AI — AI Assistant for ERPNext
+# OLY AI — Enterprise AI Assistant for ERPNext
 
-**Version:** 0.1.0  
+**Version:** 1.0.0  
 **License:** MIT  
 **Publisher:** OLY Technologies (kidus@oly.et)  
 **Requires:** Frappe >= 15.0.0, ERPNext >= 15.0.0  
+**Codebase:** ~12,100 lines Python · ~3,900 lines JS · ~1,000 lines CSS · 133 tests  
 
-Provider-agnostic AI assistant for ERPNext. Adds AI-powered summaries, triage, suggested replies, draft content, and Q&A directly inside the Desk UI — without modifying any core ERPNext code.
+Enterprise-grade, provider-agnostic AI assistant for ERPNext. Delivers AI-powered chat, document intelligence, customer service automation, voice I/O, image generation, and cross-app integration — all directly inside the Desk UI without modifying any core code.
 
 ---
 
 ## Table of Contents
 
-1. [Features](#features)
-2. [Architecture Overview](#architecture-overview)
-3. [Installation](#installation)
-4. [Configuration Guide](#configuration-guide)
-5. [AI Settings — All Fields](#ai-settings--all-fields)
-6. [Supported Providers](#supported-providers)
-7. [API Reference](#api-reference)
-8. [DocType JS Hooks](#doctype-js-hooks)
-9. [AI Prompt Templates](#ai-prompt-templates)
-10. [Cost Control & Budget Management](#cost-control--budget-management)
-11. [Caching](#caching)
-12. [Audit Logging](#audit-logging)
-13. [Switching to Self-Hosted AI](#switching-to-self-hosted-ai)
-14. [File Structure](#file-structure)
-15. [Security & Permissions](#security--permissions)
-16. [Troubleshooting](#troubleshooting)
-17. [Roadmap](#roadmap)
-18. [Uninstall](#uninstall)
+1. [Overview](#overview)
+2. [Features at a Glance](#features-at-a-glance)
+3. [Architecture](#architecture)
+4. [Installation](#installation)
+5. [Configuration Guide](#configuration-guide)
+6. [AI Settings — Complete Reference](#ai-settings--complete-reference)
+7. [Supported Providers](#supported-providers)
+8. [AI Chat Interface](#ai-chat-interface)
+9. [Document AI (DocType Hooks)](#document-ai-doctype-hooks)
+10. [AI Tools — 18 Built-in Capabilities](#ai-tools--18-built-in-capabilities)
+11. [RAG — Retrieval-Augmented Generation](#rag--retrieval-augmented-generation)
+12. [Streaming & Real-Time](#streaming--real-time)
+13. [Voice — Speech-to-Text & Text-to-Speech](#voice--speech-to-text--text-to-speech)
+14. [Image Generation](#image-generation)
+15. [Customer Service Automation](#customer-service-automation)
+16. [Cross-App Integration](#cross-app-integration)
+17. [Memory System](#memory-system)
+18. [Workflow Automation](#workflow-automation)
+19. [Security & Access Control](#security--access-control)
+20. [Cost Control & Budget Management](#cost-control--budget-management)
+21. [Caching](#caching)
+22. [Audit Logging](#audit-logging)
+23. [PII Data Masking](#pii-data-masking)
+24. [AI Prompt Templates](#ai-prompt-templates)
+25. [API Reference](#api-reference)
+26. [DocTypes Reference](#doctypes-reference)
+27. [File Structure](#file-structure)
+28. [Testing](#testing)
+29. [Switching to Self-Hosted AI](#switching-to-self-hosted-ai)
+30. [Troubleshooting](#troubleshooting)
+31. [Changelog](#changelog)
+32. [Uninstall](#uninstall)
 
 ---
 
-## Features
+## Overview
 
-| Feature | Description | DocTypes |
-|---------|-------------|----------|
-| **Summarize** | One-click document summary with next steps | Lead, Opportunity, Issue, Quotation, Task, Project, Sales Order, Sales Invoice |
-| **Triage** | Auto-classify priority, category, routing | Lead, Opportunity, Issue |
-| **Suggest Reply** | Draft professional replies based on context | Lead, Issue |
-| **Draft** | Generate content (emails, proposals, notes) | Lead, Opportunity, Quotation, Task, Project, Sales Order |
-| **Classify** | Categorize documents with confidence scores | Opportunity, Issue |
-| **Ask AI...** | Custom free-text prompt on any document | All hooked doctypes |
-| **Ask ERP** | Global Q&A about SOPs, policies, and how-to | Navbar button (global) |
-| **Cost Tracking** | Per-user token usage, daily/monthly limits | AI Settings |
-| **Response Cache** | Redis-backed cache to reduce API costs 60–80% | Automatic |
-| **Audit Log** | Every AI call logged with user, tokens, cost, timing | AI Audit Log |
+OLY AI turns your ERPNext installation into an AI-powered workspace. Instead of switching between tools, employees get intelligent assistance right where they work — on every form, in every workflow.
+
+**Key differentiators:**
+- **Provider-agnostic** — OpenAI, Anthropic, Ollama, vLLM, LiteLLM. Switch by changing one setting.
+- **Zero core changes** — Pure hooks, whitelisted methods, and custom DocTypes. Safe to install/uninstall.
+- **Enterprise features** — RBAC, budget limits, rate limiting, PII masking, audit logging, response caching.
+- **Omnichannel AI** — Same AI brain answers on Desk, Email, Frappe Chat, and Telegram.
+- **43 DocType hooks** — AI buttons on ERPNext, HRMS, Marketing Suite, Oly, and Webshop forms.
 
 ---
 
-## Architecture Overview
+## Features at a Glance
+
+### AI Chat & Interaction
+| Feature | Description |
+|---------|-------------|
+| **AI Chat Panel** | Full conversation UI with session management, search, pinning |
+| **3 Modes** | Ask (read-only Q&A), Agent (read + tools), Execute (write actions) |
+| **Streaming** | Real-time token-by-token streaming with Server-Sent Events |
+| **@Mention DocTypes** | Type `@Lead` or `@SO-2024-001` to inject live document context |
+| **Message Editing** | Edit any sent message and regenerate AI response |
+| **Retry / Regenerate** | Retry failed or unsatisfactory responses with one click |
+| **Share Chat** | Share sessions with other users for collaborative AI conversations |
+| **Export** | Export conversations to Markdown or JSON |
+| **Tab Filters** | Filter sessions by All / Pinned / Shared |
+| **Model Catalog** | Browse available models with capability badges and pricing |
+
+### Document Intelligence
+| Feature | Description |
+|---------|-------------|
+| **Summarize** | One-click document summary with next steps |
+| **Triage** | Auto-classify priority, category, routing |
+| **Suggest Reply** | Draft professional replies based on document context |
+| **Draft** | Generate emails, proposals, reports from document data |
+| **Classify** | Categorize with confidence scores and sentiment |
+| **Ask AI...** | Free-text custom prompts on any document |
+| **Global AI Button** | AI Assist button appears on all 43 hooked DocType forms |
+
+### Customer Service Automation
+| Feature | Description |
+|---------|-------------|
+| **Email Auto-Response** | AI drafts reply suggestions for incoming customer emails |
+| **Telegram AI Bridge** | Auto-respond to Telegram messages via bot integration |
+| **Frappe Chat AI** | Auto-reply to guest messages, draft responses for agents |
+| **SLA Monitor** | Scheduled check every 30 min for overdue/at-risk Issues |
+| **Sentiment Analysis** | Detect positive/negative/neutral tone + urgency scoring |
+
+### Enterprise Features
+| Feature | Description |
+|---------|-------------|
+| **RAG Pipeline** | Hybrid BM25 + vector search over indexed documents |
+| **Voice I/O** | Whisper speech-to-text + TTS with 6 voice options |
+| **Image Generation** | DALL-E 3 integration with content safety filters |
+| **File Upload & Parsing** | Parse PDF, DOCX, XLSX, CSV, images for AI context |
+| **Web Search** | DuckDuckGo integration for real-time web queries |
+| **Web Page Reader** | Fetch and parse any URL for AI analysis |
+| **Code Execution** | Sandboxed Python execution with timeout and safety guards |
+| **PII Masking** | Auto-detect and mask sensitive data before sending to LLM |
+| **Workflow Engine** | Rule-based automations triggered by document events |
+| **Cross-Session Memory** | AI remembers user preferences and past interactions |
+| **Access Control (RBAC)** | Role-based tiers controlling which AI features users access |
+| **Budget Management** | Monthly caps, daily limits, per-user tracking |
+| **Response Caching** | Redis-backed cache reducing API costs 60–80% |
+| **Audit Logging** | Every AI call logged with user, tokens, cost, timing |
+
+---
+
+## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                    Frappe Desk UI                         │
-│                                                          │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌───────────────┐  │
-│  │  Lead    │ │  Issue  │ │ Quotn.  │ │  Ask ERP 🤖   │  │
-│  │ AI Btns  │ │ AI Btns │ │ AI Btns │ │  (navbar)     │  │
-│  └────┬─────┘ └────┬────┘ └────┬────┘ └──────┬────────┘  │
-│       │            │           │              │           │
-│       └────────────┴───────────┴──────────────┘           │
-│                        │                                  │
-│              frappe.xcall()                               │
-└──────────────────────────┬───────────────────────────────┘
-                           │
-                           ▼
-┌──────────────────────────────────────────────────────────┐
-│              oly_ai — Custom Frappe App                   │
-│                                                          │
-│  ┌─────────────────────────────────────────────────────┐  │
-│  │              API Gateway (gateway.py)                │  │
-│  │  • Permission check (frappe.has_permission)          │  │
-│  │  • Budget check (daily/monthly limits)               │  │
-│  │  • Context builder (doc fields + comms + comments)   │  │
-│  │  • Prompt template resolution                        │  │
-│  │  • Cache check (Redis)                               │  │
-│  │  • Audit logging                                     │  │
-│  │  • Cost tracking                                     │  │
-│  └──────────────────────┬──────────────────────────────┘  │
-│                         │                                 │
-│  ┌──────────────────────▼──────────────────────────────┐  │
-│  │           LLM Provider (provider.py)                 │  │
-│  │  • OpenAI API        → api.openai.com/v1             │  │
-│  │  • Anthropic API     → api.anthropic.com             │  │
-│  │  • Custom endpoint   → your-server:11434/v1          │  │
-│  │  • Embeddings        → for RAG (Phase 2)             │  │
-│  └──────────────────────┬──────────────────────────────┘  │
-│                         │                                 │
-│  ┌─────────┐ ┌──────────┤ ┌──────────────┐               │
-│  │  Cache   │ │  Cost    │ │  Audit Log   │               │
-│  │ (Redis)  │ │ Tracker  │ │  (DocType)   │               │
-│  └─────────┘ └──────────┘ └──────────────┘               │
-└──────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-              ┌──────────────────────┐
-              │   LLM Provider       │
-              │ (OpenAI / Anthropic  │
-              │  / Ollama / vLLM)    │
-              └──────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                         Frappe Desk UI                                │
+│                                                                       │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌───────────┐ │
+│  │ 43 DocType│ │ AI Chat  │ │ Ask AI   │ │ Dashboard │ │   Voice   │ │
+│  │ AI Buttons│ │  Panel   │ │  Page    │ │   Page    │ │   I/O     │ │
+│  └─────┬─────┘ └────┬─────┘ └────┬─────┘ └─────┬─────┘ └─────┬─────┘ │
+│        └─────────────┴────────────┴─────────────┴─────────────┘       │
+│                              │  frappe.xcall() / SSE                   │
+└──────────────────────────────┼────────────────────────────────────────┘
+                               ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                    oly_ai — Frappe Custom App                         │
+│                                                                       │
+│  ┌──────────────────────── API Layer ─────────────────────────────┐   │
+│  │ gateway.py │ chat.py │ stream.py │ train.py │ voice.py │ etc. │   │
+│  └──────────────────────────┬────────────────────────────────────┘   │
+│                              │                                        │
+│  ┌────────────────── Core Services ──────────────────────────────┐   │
+│  │ provider.py    │ tools.py (18)  │ rag/          │ memory.py   │   │
+│  │ context.py     │ file_parser.py │ web_reader.py │ cache.py    │   │
+│  │ cost_tracker.py│ pii_filter.py  │ sentiment.py  │ access.py   │   │
+│  └──────────────────────────┬────────────────────────────────────┘   │
+│                              │                                        │
+│  ┌────────── Automation Layer ────────────────────────────────────┐   │
+│  │ email_handler.py │ telegram_handler.py │ sla_monitor.py       │   │
+│  │ workflow_engine.py │ notifications.py                          │   │
+│  └───────────────────────────────────────────────────────────────┘   │
+│                                                                       │
+│  ┌────────── External Integrations ──────────────────────────────┐   │
+│  │ Frappe Chat (chat app) → oly_ai.api.gateway.ask_erp()        │   │
+│  │ Oly Telegram Hub → oly.telegram.bot_handler.send_message()    │   │
+│  └───────────────────────────────────────────────────────────────┘   │
+└──────────────────────────────┬───────────────────────────────────────┘
+                               ▼
+              ┌──────────────────────────────────┐
+              │       LLM Provider               │
+              │  OpenAI │ Anthropic │ Self-hosted │
+              │  (GPT-4o, Claude 3.5, Llama 3.1) │
+              └──────────────────────────────────┘
 ```
-
-**Key design principles:**
-- **No core edits** — all functionality via hooks, whitelisted APIs, and custom DocTypes
-- **Upgrade-safe** — clean install/uninstall, survives `bench update`
-- **Draft-first** — AI never auto-writes to documents; all suggestions require human action
-- **Permission-respecting** — every API call checks `frappe.has_permission` before reading data
-- **Provider-agnostic** — swap LLM providers by changing 2 fields in Settings
 
 ---
 
 ## Installation
 
 ### New install
+
 ```bash
 cd /path/to/frappe-bench
-
-# Get the app
-bench get-app /path/to/oly_ai   # or: bench get-app https://github.com/your-org/oly_ai.git
-
-# Install pip package
-./env/bin/pip install -e apps/oly_ai
-
-# Install on site
+bench get-app https://github.com/kiduskinfe/oly_ai.git
 bench --site your-site install-app oly_ai
-
-# Build assets
 bench build --app oly_ai
-
-# Migrate (creates DB tables)
-bench --site your-site migrate
+bench restart
 ```
 
 ### Verify installation
+
 ```bash
-bench --site your-site console
->>> "oly_ai" in frappe.get_installed_apps()
-True
->>> frappe.db.exists("DocType", "AI Settings")
-'AI Settings'
+bench --site your-site list-apps
+# Should show: ... oly_ai
 ```
+
+Visit `/app/ai-settings` to configure your provider and API key.
 
 ---
 
 ## Configuration Guide
 
 ### Step 1: Open AI Settings
-Navigate to the URL bar and type `AI Settings`, or go to:
-```
-/app/ai-settings
-```
+Navigate to **AI Settings** (`/app/ai-settings`) in the Desk.
 
 ### Step 2: Choose Provider
-| Provider | When to use |
-|----------|-------------|
-| **OpenAI** | Best quality + speed. Recommended for most use cases. |
-| **Anthropic** | Alternative to OpenAI. Good for long-context tasks. |
-| **Custom (OpenAI Compatible)** | Self-hosted (Ollama, vLLM, LiteLLM). Full data privacy. |
+Select one of:
+- **OpenAI** — GPT-4o, GPT-4o-mini, GPT-5.2, o1, o3
+- **Anthropic** — Claude 3.5 Sonnet, Claude 4 Opus
+- **Custom (OpenAI Compatible)** — Ollama, vLLM, LiteLLM, or any OpenAI-compatible endpoint
 
 ### Step 3: Enter API Key
-- **OpenAI:** Get from https://platform.openai.com/api-keys
-- **Anthropic:** Get from https://console.anthropic.com/settings/keys
-- **Custom:** Your server's auth token (or any value if no auth)
+Paste your API key. Stored encrypted via Frappe's Password field.
 
 ### Step 4: Set Model
-| Model | Provider | Cost/1M tokens (in→out) | Best for |
-|-------|----------|------------------------|----------|
-| `gpt-4o-mini` | OpenAI | $0.15 → $0.60 | Most ERP tasks (recommended) |
-| `gpt-4o` | OpenAI | $2.50 → $10.00 | Complex reasoning, drafting |
-| `claude-3-5-haiku-20241022` | Anthropic | $0.80 → $4.00 | Fast + cheap |
-| `claude-3-5-sonnet-20241022` | Anthropic | $3.00 → $15.00 | High quality |
-| `llama3.1` | Self-hosted | $0 | Data privacy (needs GPU) |
+Default model name (e.g. `gpt-4o-mini`, `claude-3-5-sonnet-20241022`, `llama3.1`).
 
-### Step 5: Set Budget & Limits
-- **Monthly Budget Cap:** e.g. $100. AI calls stop when exceeded.
-- **Daily Request Limit per User:** e.g. 100 requests/user/day.
+### Step 5: Configure Budget & Limits
+- **Monthly Budget (USD)** — AI calls stop when reached. 0 = unlimited.
+- **Daily Request Limit** — Per-user daily cap. 0 = unlimited.
+- **Rate Limit per Minute** — Sliding window throttle. 0 = disabled.
 
-### Step 6: Save
-Click Save. AI Assist buttons will now appear on supported documents.
+### Step 6: Enable Features
+- **Enable Live Data Queries** — Let AI search and read ERP data (respects permissions)
+- **Enable Execute Mode** — Let AI propose document creation/updates (requires approval)
+- **Enable Telegram AI** — Auto-respond to incoming Telegram messages
+- **Enable Email Auto-Response** — Generate AI draft replies for incoming emails
+
+### Step 7: Save
+Click Save. AI buttons appear on all 43 hooked DocType forms immediately.
 
 ---
 
-## AI Settings — All Fields
+## AI Settings — Complete Reference
 
 ### Provider Section
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Provider Type | Select | OpenAI | `OpenAI`, `Anthropic`, or `Custom (OpenAI Compatible)` |
-| API Key | Password | — | Your provider's API key (stored encrypted) |
-| Base URL | Data | Auto | Override for custom endpoints. Required for Custom provider. |
-| Default Model | Data | gpt-4o-mini | Model identifier string |
-| Embedding Model | Data | text-embedding-3-small | For RAG/embeddings (Phase 2) |
-| Embedding Base URL | Data | — | If embeddings use a different endpoint |
+| Provider Type | Select | OpenAI | OpenAI / Anthropic / Custom (OpenAI Compatible) |
+| API Key | Password | — | Your provider API key (encrypted at rest) |
+| Base URL | Data | Auto | Override for self-hosted endpoints |
+| Default Model | Data | gpt-4o-mini | Primary model for all AI calls |
+| Embedding Model | Data | text-embedding-3-small | Model for RAG embeddings |
+| Embedding Base URL | Data | — | Separate endpoint for embedding provider |
 
 ### Parameters Section
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Max Tokens | Int | 2048 | Maximum output tokens per AI call |
-| Temperature | Float | 0.3 | 0 = deterministic, 1 = creative. 0.3 recommended for ERP. |
-| Top P | Float | 1.0 | Nucleus sampling parameter |
+| Max Tokens | Int | 2048 | Maximum output tokens per call |
+| Temperature | Float | 0.3 | 0 = deterministic, 1 = creative |
+| Top P | Float | 1.0 | Nucleus sampling threshold |
 | Timeout (seconds) | Int | 30 | Max wait time for AI response |
 
-### Budget Section
+### Execution & Data Access
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Monthly Budget Cap (USD) | Currency | 100 | AI stops when exceeded. 0 = unlimited. |
-| Daily Request Limit per User | Int | 100 | Per-user daily cap. 0 = unlimited. |
-| Current Month Spend (USD) | Currency | — | Auto-calculated (read-only) |
-| Total Requests Today | Int | — | Auto-calculated (read-only) |
+| Enable Live Data Queries | Check | ✅ | AI can search/read ERP data |
+| Enable Execute Mode | Check | ❌ | AI can propose writes (with approval) |
+| Require Approval | Check | ✅ | All AI actions need explicit approval |
+| Warn on Dangerous Actions | Check | ✅ | Extra warnings for Submit/Cancel/Delete |
+| Max Records per Query | Int | 100 | Cap on records fetched per tool call |
+| Max Tool Rounds | Int | 10 | Max tool-call rounds per request (1-25) |
 
-### Cache Section
+### Budget & Rate Limits
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Enable Response Caching | Check | Yes | Cache identical requests in Redis |
+| Monthly Budget (USD) | Currency | 100 | Monthly spending cap (0 = unlimited) |
+| Daily Request Limit | Int | 100 | Per-user daily cap (0 = unlimited) |
+| Rate Limit per Minute | Int | 0 | Per-user sliding window (0 = disabled) |
+| Budget Warning Threshold (%) | Int | 80 | Alert admins at this % of budget |
+
+### Training (RAG)
+| Field | Type | Description |
+|-------|------|-------------|
+| DocTypes to Index | Table | Which DocTypes the AI should learn from |
+| Training Actions | HTML | Buttons: Reindex All, Clear All, Discover DocTypes |
+| Index Statistics | HTML | Live document/embedding counts |
+
+### Access Control
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| Enable RBAC | Check | ❌ | Restrict AI features by user role |
+| Access Levels | Table | — | Map roles to AI tiers (viewer/user/power/admin) |
+
+### Customer Service AI
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| Enable Email Auto-Response | Check | ❌ | AI draft replies for incoming emails |
+| Auto-Response DocTypes | Table | — | Which doctypes trigger email drafts |
+| Enable Telegram AI | Check | ✅ | AI auto-respond to Telegram messages |
+
+### Caching
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| Enable Caching | Check | ✅ | Cache identical requests (Redis) |
 | Cache TTL (hours) | Int | 4 | How long cached responses are valid |
 
-### Logging Section
+### Logging & Audit
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Enable Audit Logging | Check | Yes | Log every AI call to AI Audit Log DocType |
-| Enable Cost Tracking | Check | Yes | Track token usage and estimated costs |
-| Log Prompts | Check | No | Store full prompts (may contain sensitive data) |
-| Log Responses | Check | Yes | Store AI responses in audit log |
+| Enable Audit Logging | Check | ✅ | Log every AI call to AI Audit Log |
+| Enable Cost Tracking | Check | ✅ | Track token usage and costs |
+| Log Prompts | Check | ❌ | Store full prompts (privacy-sensitive) |
+| Log Responses | Check | ✅ | Store AI responses in audit log |
+
+### Branding
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| Brand Gradient Start | Color | #f97316 | AI icon gradient start color |
+| Brand Gradient End | Color | #ea580c | AI icon gradient end color |
 
 ---
 
 ## Supported Providers
 
 ### OpenAI
-- **Base URL:** `https://api.openai.com/v1` (auto-set)
-- **Auth:** Bearer token via API Key
-- **Endpoint:** `/chat/completions`
-- **Models:** gpt-4o-mini, gpt-4o, gpt-4-turbo
-- **Embeddings:** text-embedding-3-small, text-embedding-3-large
+```
+Provider Type: OpenAI
+API Key: sk-...
+Default Model: gpt-4o-mini  (or gpt-4o, gpt-5.2, o1, o3-mini)
+```
+Supports: chat, streaming, tool calling, vision, embeddings, image generation, TTS, STT.
 
 ### Anthropic (Claude)
-- **Base URL:** `https://api.anthropic.com` (auto-set)
-- **Auth:** `x-api-key` header
-- **Endpoint:** `/v1/messages`
-- **Models:** claude-3-5-sonnet-20241022, claude-3-5-haiku-20241022, claude-3-opus-20240229
-- **Note:** Uses Anthropic's native message format (auto-converted internally)
+```
+Provider Type: Anthropic
+API Key: sk-ant-...
+Default Model: claude-3-5-sonnet-20241022  (or claude-3-opus, claude-4)
+```
+Supports: chat, streaming, tool calling, vision. Embeddings via OpenAI-compatible endpoint.
 
 ### Custom (OpenAI Compatible)
-Works with any server that implements the OpenAI chat completions API:
-- **Ollama:** `http://your-server:11434/v1`
-- **vLLM:** `http://your-server:8000/v1`
-- **LiteLLM:** `http://your-server:4000/v1`
-- **LocalAI:** `http://your-server:8080/v1`
-- **text-generation-webui:** `http://your-server:5000/v1`
+```
+Provider Type: Custom (OpenAI Compatible)
+API Key: (any value, or your server's auth token)
+Base URL: http://your-server:11434/v1
+Default Model: llama3.1
+```
+Works with: **Ollama**, **vLLM**, **LiteLLM**, **LocalAI**, **text-generation-webui**, and any OpenAI-compatible API. No code changes needed.
 
 ---
 
-## API Reference
+## AI Chat Interface
 
-All API endpoints are whitelisted Frappe methods, callable via `frappe.xcall()` from JS or via REST API.
+The AI Chat is a full-featured conversational interface accessible from:
+- **Navbar button** — "Ask ERP" icon in the top bar (global)
+- **Ask AI page** — `/app/ask-ai` standalone page
 
-### `oly_ai.api.gateway.ai_assist`
+### Sessions
+- Persistent conversation sessions stored in `AI Chat Session` DocType
+- Create, rename, pin, delete sessions
+- Search across all sessions and messages
+- Share sessions with other users
+- Export to Markdown or JSON
 
-Main AI gateway for document-level AI features.
+### 3 Modes
 
-**Parameters:**
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `doctype` | str | Yes | Document type (e.g. "Lead", "Issue") |
-| `name` | str | Yes | Document name |
-| `feature` | str | Yes | `Summarize`, `Triage`, `Suggest Reply`, `Draft`, `Classify` |
-| `custom_prompt` | str | No | Additional instructions for the AI |
+| Mode | Capabilities | Use Case |
+|------|-------------|----------|
+| **Ask** | Read-only Q&A, RAG search | "What's our return policy?" |
+| **Agent** | Ask + all read tools + web search + file analysis | "Show me overdue invoices over $10K" |
+| **Execute** | Agent + create/update/submit/cancel/delete tools | "Create a Sales Order for Customer X" |
 
-**Returns:**
-```json
-{
-  "content": "AI response text (markdown)",
-  "model": "gpt-4o-mini",
-  "cached": false,
-  "cost": 0.0012,
-  "tokens": 450,
-  "response_time": 1.5
-}
-```
+### @Mention DocType Context
+Type `@` in the chat to inject live document context:
+- `@Lead` — injects Lead doctype schema and recent records
+- `@SO-2024-001` — injects the specific Sales Order document data
 
-**Request flow:**
-1. Permission check → `frappe.has_permission(doctype, "read", name)`
-2. Budget check → daily limit + monthly cap
-3. Context extraction → doc fields + communications + comments
-4. Prompt resolution → template or default
-5. Cache check → Redis lookup
-6. LLM call → provider API
-7. Cost tracking → token count + estimated cost
-8. Cache store → save response
-9. Audit log → record everything
-10. Return response
-
-**Example (JS):**
-```javascript
-frappe.xcall("oly_ai.api.gateway.ai_assist", {
-    doctype: "Lead",
-    name: "LEAD-00042",
-    feature: "Summarize"
-}).then(r => console.log(r.content));
-```
-
-**Example (REST):**
-```bash
-curl -X POST https://your-site/api/method/oly_ai.api.gateway.ai_assist \
-  -H "Authorization: token api_key:api_secret" \
-  -H "Content-Type: application/json" \
-  -d '{"doctype": "Lead", "name": "LEAD-00042", "feature": "Summarize"}'
-```
-
-### `oly_ai.api.gateway.ask_erp`
-
-General Q&A about the ERP system, SOPs, and policies.
-
-**Parameters:**
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `question` | str | Yes | User's question in natural language |
-
-**Returns:**
-```json
-{
-  "content": "AI answer (markdown)",
-  "model": "gpt-4o-mini",
-  "cached": false,
-  "cost": 0.0008
-}
-```
-
-**Example (JS):**
-```javascript
-frappe.xcall("oly_ai.api.gateway.ask_erp", {
-    question: "What is our leave policy for new employees?"
-}).then(r => console.log(r.content));
-```
-
-### `oly_ai.api.gateway.get_ai_status`
-
-Get current AI usage stats (for dashboards).
-
-**Returns:**
-```json
-{
-  "provider": "OpenAI",
-  "model": "gpt-4o-mini",
-  "monthly_budget": 100,
-  "current_spend": 42.50,
-  "daily_limit": 100,
-  "requests_today": 23,
-  "caching_enabled": true
-}
-```
+### Features
+- Real-time streaming with SSE (Server-Sent Events)
+- File upload with automatic parsing (PDF, DOCX, XLSX, CSV, images)
+- Image generation via "generate image of..." prompts
+- Voice input (Whisper STT) and voice output (TTS)
+- Message editing with AI re-generation
+- Retry button on failed/unsatisfactory responses
+- Model switching mid-conversation
+- Tab filters: All / Pinned / Shared
 
 ---
 
-## DocType JS Hooks
+## Document AI (DocType Hooks)
 
-AI Assist buttons are added to these doctypes automatically on form load:
+AI Assist buttons appear on **43 DocType forms** across 5 apps. Each button opens a contextual AI dialog with the document's data pre-loaded.
 
-| DocType | Available Features |
-|---------|-------------------|
-| **Lead** | Summarize, Triage, Suggest Reply, Draft, Ask AI... |
-| **Opportunity** | Summarize, Triage, Draft, Classify, Ask AI... |
-| **Issue** | Summarize, Triage, Suggest Reply, Classify, Ask AI... |
-| **Quotation** | Summarize, Draft, Ask AI... |
-| **Task** | Summarize, Draft, Ask AI... |
-| **Project** | Summarize, Draft, Ask AI... |
-| **Sales Order** | Summarize, Draft, Ask AI... |
-| **Sales Invoice** | Summarize, Ask AI... |
+### ERPNext Core (17 DocTypes)
+Lead, Opportunity, Issue, Quotation, Task, Project, Sales Order, Sales Invoice, Employee, Purchase Order, Purchase Invoice, Leave Application, Customer, Supplier, Expense Claim, Journal Entry, Payment Entry
 
-### Adding AI to a new DocType
-Create a new JS file at `oly_ai/public/js/doctype_hooks/your_doctype.js`:
-```javascript
-frappe.ui.form.on("Your DocType", {
-    refresh(frm) {
-        if (frm.doc.docstatus < 2) {
-            oly_ai.add_ai_buttons(frm, [
-                "Summarize",
-                "Triage",        // optional
-                "Suggest Reply", // optional
-                "Draft",         // optional
-                "Classify",      // optional
-            ]);
-        }
-    },
-});
-```
+### Marketing Suite (9 DocTypes)
+Content, Ad Campaign, Insight, Research, Competitor, Influencer, Brand Profile, Media Outlet, Sponsor
 
-Then add to `hooks.py`:
-```python
-doctype_js = {
-    ...
-    "Your DocType": "public/js/doctype_hooks/your_doctype.js",
-}
-```
+### HRMS (9 DocTypes)
+Job Applicant, Job Opening, Appraisal, Employee Grievance, Interview Feedback, Salary Slip, Payroll Entry, Travel Request, Goal
 
-Run `bench build --app oly_ai` after adding.
+### Oly Custom App (6 DocTypes)
+Letter, Daily Work Report, Telegram Chat, Call Log, Feedback, Job Scorecard
+
+### Webshop (2 DocTypes)
+Website Item, Item Review
+
+### Available AI Actions per DocType
+Each DocType can support any combination of: **Summarize**, **Triage**, **Suggest Reply**, **Draft**, **Classify**, **Ask AI...**
+
+The global AI button injection makes adding AI to new DocTypes trivial — just create a JS hook file.
 
 ---
 
-## AI Prompt Templates
+## AI Tools — 18 Built-in Capabilities
 
-Prompt Templates let you customize the AI's behavior per feature and per doctype — without changing code.
+Tools are the AI's hands. In **Agent** and **Execute** modes, the AI can call tools to interact with your ERP data.
 
-### DocType: AI Prompt Template
+### Read Tools (available in Agent + Execute modes)
 
-| Field | Description |
-|-------|-------------|
-| Template Name | Unique identifier |
-| Feature | Summarize, Triage, Suggest Reply, Draft, Classify, Custom |
-| DocType | Specific to a DocType, or blank for global |
-| Enabled | On/Off toggle |
-| Model Override | Use a different model for this template |
-| Temperature Override | Different creativity level |
-| Max Tokens Override | Different output length |
-| System Prompt | Instructions for the AI (supports `{doctype}`, `{name}` placeholders) |
-| User Prompt Template | The actual request (supports `{doctype}`, `{name}` placeholders) |
-| Context Fields | Comma-separated field names to include (blank = all) |
-| Include Communications | Include linked emails/messages |
-| Include Comments | Include document comments |
-| Max Context Length | Character limit for context |
+| # | Tool | Description |
+|---|------|-------------|
+| 1 | `search_documents` | Search any DocType with filters, fields, order, and limits |
+| 2 | `get_document` | Fetch a specific document by name with all fields |
+| 3 | `count_documents` | Count documents matching filters |
+| 4 | `get_report` | Run built-in or custom Frappe reports |
+| 5 | `get_list_summary` | Aggregated summaries (sum, avg, count) with grouping |
+| 6 | `web_search` | Search the web via DuckDuckGo |
+| 7 | `analyze_file` | Parse uploaded files (PDF, DOCX, XLSX, CSV, images) |
+| 8 | `read_webpage` | Fetch and extract content from any URL |
+| 9 | `run_code` | Execute Python code in a sandboxed environment |
+| 10 | `analyze_sentiment` | Analyze text sentiment and urgency |
 
-### Template Resolution Order
-1. **DocType-specific template** — matches feature + doctype
-2. **Global template** — matches feature only (no doctype set)
-3. **Built-in default** — hardcoded fallback prompts per feature
+### Write Tools (available in Execute mode only)
 
-### Example: Custom Lead Summary Template
-```
-Template Name: Lead Summary - Sales
-Feature: Summarize
-DocType: Lead
-System Prompt: You are a senior sales analyst at OLY Technologies. Summarize this
-  Lead focusing on: 1) Buying intent signals, 2) Budget indicators, 3) Timeline,
-  4) Competition risk, 5) Recommended next action. Be concise and actionable.
-User Prompt: Analyze this {doctype} and provide a sales-focused summary.
-Context Fields: lead_name,company_name,source,status,notes
-Include Communications: Yes
-Max Context Length: 6000
-```
+| # | Tool | Description |
+|---|------|-------------|
+| 11 | `create_document` | Create a new document in any DocType |
+| 12 | `update_document` | Update fields on an existing document |
+| 13 | `submit_document` | Submit a draft document |
+| 14 | `cancel_document` | Cancel a submitted document |
+| 15 | `delete_document` | Delete a document |
+| 16 | `send_communication` | Send emails via Frappe Communication |
+| 17 | `add_comment` | Add a comment to any document |
+
+### Custom Tools
+
+| # | Tool | Description |
+|---|------|-------------|
+| 18 | Custom Tools | User-defined tools via `AI Custom Tool` DocType |
+
+Every tool call:
+- Respects Frappe permissions (`frappe.has_permission`)
+- Is logged in the audit trail
+- Respects `max_records_per_query` limits
+- Can be disabled via settings
+
+---
+
+## RAG — Retrieval-Augmented Generation
+
+RAG gives the AI knowledge about your business data by indexing documents into a searchable vector store.
+
+### How It Works
+1. **Index** — Documents are converted to text, chunked, and embedded via your embedding model
+2. **Store** — Embeddings stored in `AI Document Index` DocType (no external vector DB needed)
+3. **Retrieve** — On each query, hybrid BM25 + cosine similarity search finds relevant chunks
+4. **Augment** — Top results are injected into the LLM prompt as context
+
+### Hybrid Search (BM25 + Vector)
+- **BM25** — Traditional keyword matching (fast, handles exact terms)
+- **Vector** — Semantic similarity via embeddings (handles paraphrasing)
+- **Fusion** — Reciprocal Rank Fusion combines both approaches for best accuracy
+
+### Managing the Index
+- **Discover DocTypes** — Auto-finds all indexable DocTypes across all installed apps
+- **Index DocType** — Full-index a DocType with configurable batch size
+- **Auto-Index** — Hook on `on_update`, `after_insert`, `on_trash` for real-time index updates
+- **Scheduled Reindex** — Daily background job for stale documents
+- **Clear Index** — Per-DocType or global index clearing
+
+### Settings
+- Configure indexed DocTypes in AI Settings → Training section
+- Set embedding model (`text-embedding-3-small` by default)
+- Min similarity score threshold: 0.7
+
+---
+
+## Streaming & Real-Time
+
+The AI supports true streaming responses via Server-Sent Events (SSE).
+
+### How It Works
+1. Client calls `send_message_stream()` — returns a `task_id`
+2. Server processes in background, publishing chunks to Redis pub/sub
+3. Client polls `frappe.realtime` for `ai_stream_chunk` events
+4. Supports tool calling within streams — tool calls are interleaved with text
+5. Respects configurable `max_tool_rounds` per request
+
+### Streaming with Tools
+When the AI decides to call a tool mid-stream:
+1. Stream pauses with a `tool_call` event
+2. Tool executes server-side
+3. Result is fed back to the LLM
+4. Stream resumes with the tool-augmented response
+5. Repeats up to `max_tool_rounds` times (default: 10)
+
+---
+
+## Voice — Speech-to-Text & Text-to-Speech
+
+### Speech-to-Text (STT)
+- Uses OpenAI Whisper API
+- Supports: WAV, MP3, M4A, WEBM, OGG, FLAC
+- Max file size: 25 MB
+- Automatic language detection
+- Endpoint: `oly_ai.api.voice.voice_to_text`
+
+### Text-to-Speech (TTS)
+- Uses OpenAI TTS API
+- 6 voices: `alloy`, `echo`, `fable`, `nova`, `onyx`, `shimmer`
+- Output format: MP3
+- Endpoint: `oly_ai.api.voice.text_to_speech`
+
+### Integration
+- Microphone button in chat panel for voice input
+- Speaker button on AI responses for voice output
+- Works on desktop and mobile browsers
+
+---
+
+## Image Generation
+
+### DALL-E 3 Integration
+- Triggered by natural language: "generate image of...", "create a picture of..."
+- Sizes: 1024x1024, 1024x1792, 1792x1024
+- Quality: standard or hd
+- Content safety filters with configurable banned terms
+- Generated images saved to Frappe File Manager
+- Endpoint: `oly_ai.api.chat.generate_image`
+
+---
+
+## Customer Service Automation
+
+### Email Auto-Response (`email_handler.py`)
+**Hook:** `Communication → after_insert`
+
+When a customer sends an email linked to a supported DocType (Issue, Lead, Opportunity, Sales Order, etc.):
+1. AI analyzes the email content + document context + sentiment
+2. Generates a professional draft reply
+3. Posts the draft as a **Comment** on the document (does NOT auto-send)
+4. Notifies document owner and assignees via Notification Log
+
+Enable in AI Settings → Customer Service AI → Enable Email Auto-Response.
+
+### Telegram AI Bridge (`telegram_handler.py`)
+**Hook:** `Telegram Message → after_insert`
+
+When a customer sends a Telegram message:
+1. Guard checks: incoming text, bot-handled chat, AI enabled, not a /command
+2. Builds multi-turn conversation history (last 20 messages)
+3. Enriches with ERP context (customer orders, issues, lead info)
+4. Calls LLM with Telegram-optimized system prompt
+5. Sends reply via Telegram Bot API (Markdown with plain-text fallback)
+6. Saves outgoing message to Telegram Message doctype
+7. Race-safe: re-checks `is_bot_handling` at execution time
+
+Enable in AI Settings → Customer Service AI → Enable Telegram AI.
+
+### Frappe Chat AI (via `chat` app)
+The Chat app's `ai.py` module calls `oly_ai.api.gateway.ask_erp()`:
+- Auto-reply to guest messages (configurable)
+- Draft responses for agents (human reviews before sending)
+- Conversation history context from Chat Message records
+
+### SLA Monitor (`sla_monitor.py`)
+**Scheduler:** Every 30 minutes
+
+1. Finds overdue Issues (past SLA resolution time)
+2. Finds at-risk Issues (approaching SLA deadline)
+3. For high-priority breaches, generates AI escalation suggestions
+4. Sends notifications to assignees and System Managers
+
+### Sentiment Analysis (`sentiment.py`)
+- Weighted keyword matching for positive/negative/neutral detection
+- Urgency scoring (low/normal/high/critical)
+- Available as AI tool (`analyze_sentiment`) and internal API
+- Used by email handler and SLA monitor for context enrichment
+
+---
+
+## Cross-App Integration
+
+OLY AI integrates with **all installed Frappe apps** — not just ERPNext.
+
+### Supported Apps & DocType Hooks
+
+| App | DocType Hooks | Examples |
+|-----|:------------:|---------|
+| **ERPNext** | 17 | Lead, Sales Order, Invoice, Customer, Supplier... |
+| **HRMS** | 9 | Job Applicant, Appraisal, Salary Slip, Leave... |
+| **Marketing Suite** | 9 | Content, Ad Campaign, Competitor, Research... |
+| **Oly** | 6 | Letter, Telegram Chat, Call Log, Feedback... |
+| **Webshop** | 2 | Website Item, Item Review |
+| **Chat** | — | Direct gateway integration (ask_erp) |
+| **Total** | **43** | All auto-discover via `discover_doctypes` |
+
+### Auto-Discovery
+The `discover_doctypes` API scans all installed apps and suggests indexable DocTypes. No manual configuration needed — install a new app, run discover, and the AI learns about it.
+
+---
+
+## Memory System
+
+### Cross-Session Memory (`long_term_memory.py`)
+- AI remembers user preferences, past interactions, and important facts
+- Stored in `AI User Memory` DocType (per-user)
+- Memory scoring — more relevant memories are weighted higher
+- Memories are injected into system prompts for personalized responses
+
+### Session Memory (`memory.py`)
+- In-session conversation context management
+- Automatic context window management to stay within token limits
+- Message history truncation with importance-based retention
+
+---
+
+## Workflow Automation
+
+### AI Workflow Engine (`workflow_engine.py`)
+- Rule-based automations triggered by document events
+- Configurable via `AI Workflow` and `AI Workflow Step` DocTypes
+- Scheduler runs every 15 minutes
+- Can trigger AI actions (summarize, classify, notify) automatically
+
+---
+
+## Security & Access Control
+
+### Role-Based Access Control (RBAC)
+Enable in AI Settings → Access Control.
+
+| Tier | Capabilities |
+|------|-------------|
+| **Viewer** | Read AI responses only (no tool calls) |
+| **User** | Ask mode + basic tools |
+| **Power** | Agent mode + all read tools |
+| **Admin** | Execute mode + write tools + settings |
+
+Map Frappe roles to tiers via the Access Levels table.
+
+### Permission Enforcement
+- Every tool call checks `frappe.has_permission()` for the target document
+- Users can only AI-assist documents they already have access to
+- Write tools (create, update, delete) require explicit Execute mode + approval
+- AI Settings accessible only to System Manager
+
+### Data Safety
+- **No auto-writes** (in Ask/Agent mode) — all outputs are read-only suggestions
+- **Approval workflow** — Execute mode actions require explicit user approval
+- **API key encryption** — Stored as Frappe Password field (encrypted at rest)
+- **Prompt redaction** — Prompts not logged by default (opt-in via settings)
+- **PII masking** — Sensitive data can be masked before sending to LLM
+
+### Rate Limiting
+- Per-user per-minute sliding window
+- Daily request limits per user
+- Monthly budget cap (global)
+- Configurable warning thresholds
 
 ---
 
 ## Cost Control & Budget Management
 
-### How costs are tracked
-Every AI call records:
-- Input tokens (prompt size)
-- Output tokens (response size)
-- Estimated cost in USD (based on model pricing table)
+### How Costs Are Tracked
+Every AI call logs: input tokens, output tokens, estimated cost (based on model pricing).
 
-### Model pricing table (built-in)
-| Model | Input $/1M tokens | Output $/1M tokens |
-|-------|-------------------|---------------------|
-| gpt-4o-mini | $0.15 | $0.60 |
-| gpt-4o | $2.50 | $10.00 |
-| gpt-4-turbo | $10.00 | $30.00 |
-| text-embedding-3-small | $0.02 | $0 |
-| claude-3-5-sonnet | $3.00 | $15.00 |
-| claude-3-5-haiku | $0.80 | $4.00 |
-| claude-3-opus | $15.00 | $75.00 |
-| Self-hosted (any) | $0 | $0 |
+### Budget Enforcement
+1. **Monthly cap** — All AI calls stop when monthly spend reaches the limit
+2. **Daily per-user** — Individual users capped at N requests/day
+3. **Rate limit** — Per-minute sliding window prevents burst abuse
+4. **Warning alerts** — Admins notified at configurable threshold (default 80%)
 
-### Budget enforcement
-- **Monthly cap:** When `current_month_spend >= monthly_budget_usd`, all AI calls return a "Budget Exceeded" error instead of calling the API. Users see a clear message.
-- **Daily per-user limit:** When a user exceeds `daily_request_limit`, they get a "Rate Limited" error. Other users are unaffected.
+### Scheduled Tasks
+| Task | Schedule | Purpose |
+|------|----------|---------|
+| Reset Daily Counters | Daily | Clear per-user daily request counts |
+| Daily Digest | Daily | Send usage summary to admins |
+| Weekly Report | Weekly | Generate detailed weekly usage report |
 
-### Scheduled tasks
-| Task | Frequency | What it does |
-|------|-----------|-------------|
-| `reset_daily_counters` | Daily | Resets the "requests today" counter to 0 |
-| `generate_weekly_usage_report` | Weekly | Logs a summary of usage per user to `frappe.log` |
-
-### Typical monthly costs
-| Users | Requests/day | Model | Est. monthly cost |
-|-------|-------------|-------|-------------------|
-| 5–10 | 50–100 | gpt-4o-mini | $15–40 |
-| 10–30 | 100–500 | gpt-4o-mini | $40–150 |
-| 30–100 | 500–2000 | mixed | $150–500 |
+### Typical Monthly Costs
+| Usage Level | Model | Estimated Cost |
+|-------------|-------|:-------------:|
+| Light (50 req/day) | gpt-4o-mini | ~$5–15/mo |
+| Medium (200 req/day) | gpt-4o-mini | ~$20–60/mo |
+| Heavy (500 req/day) | gpt-4o | ~$100–300/mo |
+| Self-hosted | llama3.1 | $0 (hardware cost only) |
 
 ---
 
 ## Caching
 
-### How it works
-1. A SHA-256 hash is generated from the messages + model + feature.
-2. Before calling the API, the gateway checks Redis for this hash.
-3. If found (and not expired), the cached response is returned instantly at $0 cost.
-4. If not found, the API is called and the response is cached for future use.
+### How It Works
+- Identical requests (same prompt + model + mode) return cached responses
+- Cache key: hash of system prompt + user messages + model
+- Stored in Redis via Frappe's cache API
+- Configurable TTL (default: 4 hours)
 
-### Cache invalidation
-- **TTL-based:** Responses expire after `cache_ttl_hours` (default: 4 hours).
-- **Manual:** Call `oly_ai.core.cache.clear_cache()` from console to clear all AI caches.
-
-### Cost savings
-With caching enabled, identical requests (same document, same feature) reuse cached responses. In practice this reduces API costs by **60–80%** because:
-- Multiple users viewing the same Lead get the same summary
-- Refreshing a form doesn't re-call the API
-- Common "Ask ERP" questions are answered from cache
+### Cost Savings
+Typical workplaces have many repeated questions. Caching reduces API costs by 60–80%.
 
 ---
 
 ## Audit Logging
 
 ### DocType: AI Audit Log
-
-Every AI call creates an audit log entry with:
+Every AI call creates an audit record with:
 
 | Field | Description |
 |-------|-------------|
-| User | Who made the call |
-| Feature | Summarize, Triage, etc. |
-| Reference DocType | e.g. Lead, Issue |
-| Reference Name | e.g. LEAD-00042 |
-| Model Used | e.g. gpt-4o-mini |
-| Status | Success, Error, Cached, Rate Limited, Budget Exceeded |
-| Input Tokens | Prompt token count |
-| Output Tokens | Response token count |
-| Estimated Cost (USD) | Calculated from model pricing |
-| Response Time (seconds) | API latency |
-| Cached | Whether response was served from cache |
-| Prompt | Full prompt text (if "Log Prompts" enabled) |
-| Response | Full AI response (if "Log Responses" enabled) |
-| Error Message | Error details (if status = Error) |
+| User | Who made the request |
+| Feature | Summarize, Triage, Ask AI, etc. |
+| DocType / Name | Target document (if applicable) |
+| Model | LLM model used |
+| Tokens In / Out | Input and output token counts |
+| Cost (USD) | Estimated cost |
+| Response Time | Milliseconds |
+| Status | Success / Error / Cached |
+| Prompt | Full prompt (if logging enabled) |
+| Response | AI response (if logging enabled) |
 
-### Viewing audit logs
-Go to: `/app/ai-audit-log`
-
-Filter by user, feature, status, date range to analyze usage patterns.
-
-### Privacy note
-By default, prompts are **not** logged (they may contain document data). Responses are logged. Toggle "Log Prompts" in AI Settings if you need full traceability.
+### Viewing Audit Logs
+Navigate to `/app/ai-audit-log` to view, filter, and export logs.
 
 ---
 
-## Switching to Self-Hosted AI
+## PII Data Masking
 
-When your API costs exceed ~$300/month, or you need full data privacy, switch to a self-hosted model.
+### How It Works (`pii_filter.py`)
+Before sending prompts to external LLM providers:
+1. **Detect** — Regex patterns match emails, phone numbers, credit cards, SSNs, IBAN, IP addresses
+2. **Mask** — Replace detected PII with placeholders (`[EMAIL_1]`, `[PHONE_2]`)
+3. **Restore** — After LLM responds, placeholders are replaced back with original values
 
-### Step 1: Set up your AI server
-```bash
-# Example: Ollama on a GPU server
-curl -fsSL https://ollama.ai/install.sh | sh
-ollama serve  # Starts on port 11434
-ollama pull llama3.1
-```
+### Supported PII Types
+- Email addresses
+- Phone numbers (international formats)
+- Credit card numbers
+- Social Security Numbers (SSN)
+- IBAN numbers
+- IP addresses (v4 and v6)
+- Custom patterns (extensible)
 
-### Step 2: Update AI Settings
-| Field | Value |
-|-------|-------|
-| Provider Type | Custom (OpenAI Compatible) |
-| Base URL | `http://your-gpu-server:11434/v1` |
-| Default Model | `llama3.1` |
-| API Key | `ollama` (any value) |
+---
 
-### Step 3: Save
-That's it. No code changes. All features (Summarize, Triage, etc.) work the same.
+## AI Prompt Templates
 
-### Compatible self-hosted servers
-| Server | Install | Default Port | Notes |
-|--------|---------|-------------|-------|
-| Ollama | `curl -fsSL https://ollama.ai/install.sh \| sh` | 11434 | Easiest setup |
-| vLLM | `pip install vllm` | 8000 | Best throughput |
-| LiteLLM | `pip install litellm` | 4000 | Multi-model proxy |
-| LocalAI | Docker image | 8080 | CPU-friendly |
+### DocType: AI Prompt Template
+Pre-built templates control how the AI responds for each action type.
 
-### Recommended GPU for self-hosted
-| GPU | VRAM | Models | Monthly VPS cost |
-|-----|------|--------|-----------------|
-| RTX 3090 | 24 GB | Up to 13B | ~$150 |
-| RTX 4090 | 24 GB | Up to 70B (quantized) | ~$200 |
-| A10G | 24 GB | Up to 70B (quantized) | ~$250 |
+| Field | Description |
+|-------|-------------|
+| Template Name | Unique identifier |
+| Feature | Summarize / Triage / Suggest Reply / Draft / Classify / Ask AI |
+| System Prompt | Instructions for the AI's behavior |
+| User Prompt Template | Template with `{doctype}`, `{question}` placeholders |
+| Is Standard | Whether it's a system default |
+
+### Template Resolution Order
+1. DocType-specific template (e.g., "Lead Summarize")
+2. Feature default (e.g., "Default Summarize")
+3. Built-in fallback
+
+### Default Templates (6)
+Created automatically on install:
+1. **Default Summarize** — Key facts, status, next steps (3-5 bullets)
+2. **Default Triage** — Priority, category, routing, risk factors
+3. **Default Suggest Reply** — Professional reply draft
+4. **Default Draft** — Content generation (emails, reports)
+5. **Default Classify** — Categories, tags, sentiment, urgency
+6. **Default Ask AI** — General ERP Q&A assistant
+
+---
+
+## API Reference
+
+### Gateway (`oly_ai.api.gateway`)
+
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `ai_assist(doctype, name, feature, custom_prompt)` | User | Run AI action on a specific document |
+| `ask_erp(question)` | User | General Q&A with RAG context |
+| `get_ai_status()` | User | Check if AI is configured and get usage stats |
+
+### Chat (`oly_ai.api.chat`)
+
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `get_sessions(search, limit, offset, filter_type)` | User | List chat sessions with filters |
+| `create_session(title)` | User | Create a new chat session |
+| `get_messages(session_name)` | User | Get messages for a session |
+| `send_message(session_name, message, model, mode, file_urls)` | User | Send message and get AI response |
+| `edit_message(session_name, message_idx, new_content, model, mode)` | User | Edit a message and regenerate |
+| `regenerate_response(session_name, message_idx, model, mode)` | User | Retry AI response for a message |
+| `rename_session(session_name, title)` | User | Rename a chat session |
+| `delete_session(session_name)` | User | Delete a chat session |
+| `pin_session(session_name)` | User | Toggle pin/unpin a session |
+| `search_messages(query, limit)` | User | Full-text search across all sessions |
+| `get_model_catalog()` | User | List available models with metadata |
+| `generate_image(session_name, prompt, size, quality)` | User | Generate image via DALL-E |
+| `share_session(session_name, users)` | User | Share session with other users |
+| `unshare_session(session_name, unshare_user)` | User | Remove a user from shared session |
+| `get_shared_users(session_name)` | User | List users a session is shared with |
+| `get_doctype_suggestions(query)` | User | Autocomplete for @mention DocTypes |
+| `get_document_suggestions(doctype, query)` | User | Autocomplete for @mention documents |
+| `export_conversation(session_name, format)` | User | Export to Markdown or JSON |
+
+### Streaming (`oly_ai.api.stream`)
+
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `send_message_stream(session_name, message, model, mode, file_urls)` | User | Stream AI response via SSE with tool calling |
+
+### Training / RAG (`oly_ai.api.train`)
+
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `discover_doctypes()` | System Manager | Auto-discover all indexable DocTypes |
+| `index_doctype_full(doctype, limit)` | System Manager | Full-index a DocType |
+| `index_single_document(doctype, name)` | System Manager | Index one document |
+| `get_index_stats()` | System Manager | Get embedding counts per DocType |
+| `clear_all_index_data()` | System Manager | Clear entire vector index |
+| `clear_doctype_index(doctype)` | System Manager | Clear index for one DocType |
+
+### Voice (`oly_ai.api.voice`)
+
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `voice_to_text(audio_file)` | User | Transcribe audio to text (Whisper) |
+| `text_to_speech(text, voice)` | User | Convert text to speech audio |
+
+### Dashboard (`oly_ai.api.dashboard`)
+
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `get_dashboard_data(from_date, to_date)` | System Manager | Usage stats, costs, top users |
+
+### Actions (`oly_ai.api.actions`)
+
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `get_pending_actions(session_name)` | User | List pending AI action requests |
+| `approve_action(action_name)` | User | Approve a pending AI action |
+| `reject_action(action_name, reason)` | User | Reject a pending AI action |
+| `approve_all(session_name)` | User | Approve all pending actions in a session |
+| `reject_all(session_name, reason)` | User | Reject all pending actions in a session |
+
+---
+
+## DocTypes Reference
+
+### Core DocTypes
+
+| DocType | Type | Description |
+|---------|------|-------------|
+| **AI Settings** | Single | Global configuration (provider, budget, features) |
+| **AI Chat Session** | Document | Persistent conversation sessions |
+| **AI Chat Message** | Child Table | Messages within a session |
+| **AI Chat Shared User** | Child Table | Users a session is shared with |
+| **AI Audit Log** | Document | Per-call audit trail |
+| **AI Action Request** | Document | Pending write actions awaiting approval |
+| **AI Document Index** | Document | RAG vector embeddings storage |
+| **AI Indexed DocType** | Child Table | DocTypes selected for indexing |
+| **AI User Memory** | Document | Cross-session user memory storage |
+| **AI Prompt Template** | Document | Customizable prompt templates |
+| **AI Custom Tool** | Document | User-defined AI tools |
+| **AI Workflow** | Document | Automated AI workflow definitions |
+| **AI Workflow Step** | Child Table | Steps within a workflow |
+| **AI Access Level** | Child Table | Role-to-tier mapping for RBAC |
 
 ---
 
@@ -578,87 +865,161 @@ That's it. No code changes. All features (Summarize, Triage, etc.) work the same
 
 ```
 oly_ai/
-├── README.md                          # This file
-├── license.txt                        # MIT License
-├── pyproject.toml                     # Python package config
-├── .gitignore
-└── oly_ai/
-    ├── __init__.py                    # Version: 0.1.0
-    ├── hooks.py                       # Frappe hooks (JS, scheduler, fixtures)
-    ├── modules.txt                    # Module: "Oly AI"
-    ├── patches.txt                    # Migration patches
-    │
-    ├── api/                           # Whitelisted API endpoints
-    │   ├── __init__.py
-    │   └── gateway.py                 # ai_assist(), ask_erp(), get_ai_status()
-    │
-    ├── core/                          # Core engine
-    │   ├── __init__.py
-    │   ├── provider.py                # LLMProvider class (OpenAI/Anthropic/Custom)
-    │   ├── cache.py                   # Redis response caching
-    │   ├── cost_tracker.py            # Token tracking, budget enforcement, reports
-    │   └── context.py                 # Document context builder (fields + comms)
-    │
-    ├── features/                      # Feature-specific logic (Phase 2)
-    │   └── __init__.py
-    │
-    ├── config/                        # Frappe config
-    │   ├── __init__.py
-    │   └── desktop.py                 # Module registration
-    │
-    ├── oly_ai/                        # DocTypes (Frappe module)
-    │   ├── __init__.py
-    │   └── doctype/
-    │       ├── ai_settings/           # Singleton settings (provider, budget, cache)
-    │       ├── ai_audit_log/          # Per-call audit trail
-    │       └── ai_prompt_template/    # Customizable prompt templates
-    │
-    ├── public/
-    │   ├── css/
-    │   │   └── ai_panel.css           # AI dialog styles
-    │   └── js/
-    │       ├── oly_ai.bundle.js       # Main JS (AI panel, Ask ERP, navbar)
-    │       └── doctype_hooks/         # Per-doctype AI button hooks
-    │           ├── lead.js
-    │           ├── opportunity.js
-    │           ├── issue.js
-    │           ├── quotation.js
-    │           ├── task.js
-    │           ├── project.js
-    │           ├── sales_order.js
-    │           └── sales_invoice.js
-    │
-    └── templates/                     # Page templates (Phase 2)
-        └── pages/
+├── hooks.py                           # App hooks (43 doctype_js, schedulers, doc_events)
+├── boot.py                            # Extend bootinfo (branding colors)
+├── setup.py                           # Post-install: seed 6 prompt templates
+│
+├── api/                               # Whitelisted API endpoints
+│   ├── gateway.py         (296 L)     # ai_assist(), ask_erp(), get_ai_status()
+│   ├── chat.py          (1,898 L)     # Sessions, messages, images, share, @mention, export
+│   ├── stream.py          (496 L)     # SSE streaming with tool calling
+│   ├── train.py           (323 L)     # RAG indexing, discover, reindex schedulers
+│   ├── voice.py           (175 L)     # Whisper STT + OpenAI TTS
+│   ├── dashboard.py        (95 L)     # Usage dashboard data
+│   └── actions.py         (187 L)     # Approve/reject AI action requests
+│
+├── core/                              # Core business logic
+│   ├── provider.py        (733 L)     # LLM abstraction (OpenAI, Anthropic, Custom)
+│   ├── tools.py         (1,281 L)     # 18 AI tools + custom tool execution
+│   ├── context.py                     # Document context builder (fields + comms + comments)
+│   ├── cache.py                       # Redis response caching
+│   ├── cost_tracker.py    (205 L)     # Budget enforcement + cost tracking
+│   ├── access_control.py  (186 L)     # RBAC tier system
+│   ├── memory.py                      # In-session context management
+│   ├── long_term_memory.py (386 L)    # Cross-session user memory + scoring
+│   ├── file_parser.py    (292 L)      # PDF, DOCX, XLSX, CSV, image parsing
+│   ├── web_reader.py     (231 L)      # URL fetching and content extraction
+│   ├── pii_filter.py     (229 L)      # PII detection and masking
+│   ├── sentiment.py       (181 L)     # Sentiment + urgency analysis
+│   ├── email_handler.py   (299 L)     # Email auto-response drafts
+│   ├── telegram_handler.py (374 L)    # Telegram AI auto-respond bridge
+│   ├── sla_monitor.py    (271 L)      # SLA breach detection + AI escalation
+│   ├── workflow_engine.py (434 L)     # Rule-based AI workflow automation
+│   ├── notifications.py   (236 L)     # Daily digest + notification system
+│   ├── utils.py                       # Shared utilities
+│   └── rag/
+│       ├── indexer.py     (187 L)     # Document → embedding indexing
+│       └── retriever.py   (292 L)     # Hybrid BM25 + vector retrieval
+│
+├── oly_ai/                            # Frappe module (DocTypes + Pages)
+│   ├── doctype/
+│   │   ├── ai_settings/              # Singleton settings (provider, budget, features)
+│   │   ├── ai_chat_session/          # Persistent chat sessions
+│   │   ├── ai_chat_message/          # Chat messages (child table)
+│   │   ├── ai_chat_shared_user/      # Shared session users (child table)
+│   │   ├── ai_audit_log/             # Per-call audit trail
+│   │   ├── ai_action_request/        # Pending write actions for approval
+│   │   ├── ai_document_index/        # RAG vector embeddings
+│   │   ├── ai_indexed_doctype/       # DocType indexing config (child table)
+│   │   ├── ai_user_memory/           # Cross-session memory store
+│   │   ├── ai_prompt_template/       # Customizable prompt templates
+│   │   ├── ai_custom_tool/           # User-defined AI tools
+│   │   ├── ai_workflow/              # AI workflow definitions
+│   │   ├── ai_workflow_step/         # Workflow steps (child table)
+│   │   └── ai_access_level/          # RBAC role-tier mapping (child table)
+│   └── page/
+│       ├── ask_ai/                    # Standalone AI chat page
+│       ├── ai_dashboard/             # Usage analytics dashboard
+│       └── ai_usage_dashboard/       # Detailed usage metrics
+│
+├── public/
+│   ├── css/
+│   │   └── ai_panel.css   (1,031 L)  # AI panel styles + responsive design
+│   └── js/
+│       ├── oly_ai.bundle.js (1,774 L) # Chat UI, voice, images, @mention, share
+│       └── doctype_hooks/             # 43 per-doctype AI button hooks
+│           ├── lead.js                # ERPNext (17 files)
+│           ├── content.js             # Marketing Suite (9 files)
+│           ├── job_applicant.js       # HRMS (9 files)
+│           ├── letter.js              # Oly (6 files)
+│           ├── website_item.js        # Webshop (2 files)
+│           └── ...
+│
+├── tests/
+│   └── test_security.py (1,622 L)     # 133 tests across 24 test classes
+│
+└── features/                          # Feature modules (reserved)
 ```
 
 ---
 
-## Security & Permissions
+## Testing
 
-### Access control
-- **AI Settings:** Only `System Manager` can read/write (API keys are encrypted via Password field).
-- **AI Audit Log:** Only `System Manager` can read. No one can create/delete manually.
-- **AI Prompt Template:** Only `System Manager` can create/edit.
-- **AI Assist buttons:** Visible to all users with `read` permission on the target document.
-- **Data access:** The gateway checks `frappe.has_permission(doctype, "read", name)` before extracting any document data. Users can only AI-assist documents they can already see.
+### Test Suite: 133 Tests, 24 Classes
 
-### Data safety
-- **No auto-writes:** AI never creates, updates, or deletes any document. All outputs are suggestions that require user action (copy, comment, or manual entry).
-- **No core edits:** The app uses only hooks, whitelisted methods, and custom DocTypes. Safe to install/uninstall.
-- **API key encryption:** Stored as Frappe Password field (encrypted at rest).
-- **Prompt redaction:** By default, prompts are NOT stored in audit logs. Enable "Log Prompts" only if your data policy allows it.
+| Test Class | Tests | What It Covers |
+|-----------|:-----:|----------------|
+| TestCostTracker | 6 | Budget enforcement, daily limits, spend tracking |
+| TestInputValidation | 8 | Prompt injection, XSS, oversized inputs |
+| TestWorkflowConditionalSafety | 3 | Workflow condition sandboxing |
+| TestSQLInjectionPrevention | 4 | SQL injection in tool parameters |
+| TestAccessControl | 6 | RBAC tiers, permission checks |
+| TestRateLimiter | 4 | Per-minute sliding window rate limits |
+| TestModelAllowlist | 3 | Model name validation |
+| TestNPlusOneOptimization | 3 | Query performance, batch fetching |
+| TestWebSearchTool | 4 | DuckDuckGo search integration |
+| TestAnalyzeFileTool | 3 | File upload and parsing |
+| TestFileParser | 4 | PDF, DOCX, XLSX, CSV parsing |
+| TestRAGRetriever | 4 | Vector retrieval, scoring |
+| TestConfigurableToolRounds | 3 | Tool round limits |
+| TestWebReader | 4 | URL fetching and content extraction |
+| TestRunCode | 5 | Sandboxed code execution safety |
+| TestPIIFilter | 5 | PII detection and masking |
+| TestConversationExport | 3 | Markdown and JSON export |
+| TestHybridRAG | 4 | BM25 + vector fusion retrieval |
+| TestSentimentAnalysis | 4 | Sentiment + urgency detection |
+| TestEmailHandler | 8 | Email auto-response guards and generation |
+| TestDynamicSystemPrompt | 4 | Dynamic company-aware system prompts |
+| TestSLAMonitor | 5 | SLA breach detection and notifications |
+| TestCrossAppIntegration | 13 | Cross-app hooks, discover, tools validation |
+| TestTelegramHandler | 24 | Telegram AI bridge — guards, LLM, send, retry |
 
-### What data leaves your server?
-When using external providers (OpenAI/Anthropic):
-- Document fields included in the context
-- Communications and comments linked to the document
-- Your custom prompts
+### Running Tests
+```bash
+# All tests
+bench --site your-site run-tests --app oly_ai
 
-**Mitigations:**
-- Use `context_fields` in Prompt Templates to limit which fields are sent
-- Set `max_context_length` to cap data volume
-- Switch to self-hosted for full data privacy
+# Specific test class
+bench --site your-site run-tests --app oly_ai --module oly_ai.tests.test_security
+```
+
+---
+
+## Switching to Self-Hosted AI
+
+### Step 1: Set Up Your AI Server
+Run Ollama, vLLM, LiteLLM, or any OpenAI-compatible server.
+
+```bash
+# Example: Ollama
+ollama serve
+ollama pull llama3.1
+```
+
+### Step 2: Update AI Settings
+```
+Provider Type: Custom (OpenAI Compatible)
+Base URL: http://your-server:11434/v1
+Default Model: llama3.1
+API Key: (any non-empty value)
+```
+
+### Step 3: Save
+No code changes needed. All features (chat, tools, streaming, RAG) work identically.
+
+### Embedding Note
+For RAG, you'll need an embedding endpoint. Options:
+- Run a separate embedding model in Ollama (`nomic-embed-text`)
+- Use OpenAI for embeddings only (set Embedding Base URL separately)
+- Use any OpenAI-compatible embedding server
+
+### Compatible Self-Hosted Servers
+| Server | GPU Required | Notes |
+|--------|:----------:|-------|
+| Ollama | Optional | Easiest setup, supports quantized models |
+| vLLM | Yes | High-throughput, production-grade |
+| LiteLLM | No (proxy) | Routes to 100+ providers, unified API |
+| LocalAI | Optional | CPU-friendly, supports many formats |
 
 ---
 
@@ -672,26 +1033,43 @@ cd /path/to/frappe-bench/apps/oly_ai
 
 ### "App oly_ai not in apps.txt"
 ```bash
-echo "oly_ai" >> /path/to/frappe-bench/sites/apps.txt
+echo "oly_ai" >> sites/apps.txt
 ```
 
 ### AI buttons don't appear
 ```bash
 bench build --app oly_ai
 bench --site your-site clear-cache
-# Reload the browser (Ctrl+Shift+R)
+# Hard reload browser (Ctrl+Shift+R)
 ```
 
 ### "AI request timed out"
 Increase `Timeout (seconds)` in AI Settings. Default is 30s. Self-hosted models may need 60–120s.
 
-### "Monthly budget exceeded" but spend seems low
-Check `AI Audit Log` for actual spend. The counter in AI Settings is updated incrementally and may drift. The budget check uses the actual sum from audit logs.
+### "Monthly budget exceeded"
+Check actual spend in AI Audit Log list view. Reset via `bench --site your-site console`:
+```python
+frappe.db.set_single_value("AI Settings", "current_month_spend", 0)
+frappe.db.commit()
+```
 
 ### "AI API error: 401 Unauthorized"
-- Double-check your API key in AI Settings
-- For OpenAI: ensure the key starts with `sk-`
-- For Custom: check if your server requires authentication
+- Verify API key in AI Settings
+- OpenAI keys start with `sk-`
+- Anthropic keys start with `sk-ant-`
+- Custom: check if your server requires authentication
+
+### Telegram AI not responding
+1. Check `enable_telegram_ai` is on in AI Settings
+2. Verify Telegram Hub is configured (Oly app → Telegram Hub Settings)
+3. Ensure chat has `is_bot_handling = 1` (default for new chats)
+4. Check Error Log for "AI Telegram Response" entries
+
+### Email auto-response not generating
+1. Enable `enable_auto_response` in AI Settings
+2. Ensure the email is linked to a supported DocType
+3. Check the reference document's doctype is in the allowed list
+4. Check Error Log for "AI Auto Response" entries
 
 ### Cache not working
 ```bash
@@ -702,42 +1080,83 @@ bench --site your-site console
 
 ---
 
-## Roadmap
+## Changelog
 
-### Phase 1 (current)
-- [x] Provider-agnostic LLM client
-- [x] AI Assist on 8 doctypes
-- [x] Ask ERP (global Q&A)
-- [x] Cost tracking + budget enforcement
-- [x] Response caching
-- [x] Audit logging
-- [x] Prompt templates
+### v1.0.0 (February 2026)
 
-### Phase 2 (planned)
-- [ ] RAG pipeline (embed Wiki/SOP content for context-aware Ask ERP)
-- [ ] Standalone "Ask ERP" page with conversation history
-- [ ] Usage dashboard with charts
-- [ ] Default prompt template seeds
-- [ ] Email integration (AI-drafted replies in Communication)
-- [ ] Background job for batch summaries
+**Telegram AI Bridge**
+- Auto-respond to incoming Telegram messages via LLM
+- Multi-turn conversation history (20 messages)
+- ERP context enrichment (customer orders, issues, lead info)
+- Markdown/plain-text fallback, race-safe agent-claim detection
+- AI Settings: Customer Service AI section with toggle controls
 
-### Phase 3 (future)
-- [ ] Agent actions with approval workflows
-- [ ] n8n/webhook integration for external automations
-- [ ] Multi-language prompt templates
-- [ ] A/B testing for prompts
-- [ ] Evaluation datasets + regression tests
+**Sprint 3 — Customer Service & Cross-App Integration**
+- Email auto-response handler (AI draft replies for incoming customer emails)
+- SLA Monitor (scheduled every 30 min, detects overdue/at-risk Issues, AI escalation)
+- Sentiment analysis module + `analyze_sentiment` tool
+- Dynamic system prompts (runtime company/app context)
+- 26 new cross-app DocType hooks (Marketing Suite 9, HRMS 9, Oly 6, Webshop 2)
+
+**Sprint 2 — Enterprise Capabilities**
+- Web page reader tool
+- Conversation export (Markdown/JSON)
+- Per-user budget limits
+- Hybrid BM25 + vector RAG retrieval
+- Sandboxed code execution tool
+- PII data masking filter
+
+**Sprint 1 — Provider Parity & Intelligence**
+- Anthropic streaming + tool calling + vision support
+- File upload + parsing (PDF, DOCX, XLSX, CSV, images)
+- Web search tool (DuckDuckGo)
+- Configurable tool round limits (1-25)
+- RAG NumPy optimization
+
+**Security Hardening (2 rounds)**
+- SQL injection prevention in tool parameters
+- Budget enforcement on every call path
+- Per-minute rate limiting (sliding window)
+- RBAC access control enforcement
+- Input validation and sanitization
+- 29 security-focused tests
+
+**Feature Sprints**
+- Message editing + retry with regeneration
+- @Mention DocType context injection (`@Lead`, `@SO-001`)
+- Share sessions with other users
+- Tab filters (All / Pinned / Shared)
+- Mobile-responsive UI polish
+- Cross-session memory with scoring
+- Dashboard date picker
+
+**Core (v0.1.0 → v1.0.0)**
+- AI Chat Panel with persistent sessions
+- 3 modes: Ask, Agent, Execute
+- SSE streaming with multi-round tool calling
+- 18 AI tools (read + write + web + code + sentiment)
+- RAG pipeline with hybrid search
+- Voice I/O (Whisper STT + TTS, 6 voices)
+- Image generation (DALL-E 3)
+- Workflow engine with scheduled execution
+- 43 DocType hooks across 5 apps
+- Response caching (Redis, 60-80% cost savings)
+- Full audit logging with cost tracking
+- 6 customizable prompt templates (seeded on install)
+- AI branding (configurable gradient colors)
+- Model catalog with capability badges
 
 ---
 
 ## Uninstall
 
-Safe removal — no core changes to undo:
+Safe removal — no core ERPNext changes to undo:
+
 ```bash
 bench --site your-site uninstall-app oly_ai
-/path/to/frappe-bench/env/bin/pip uninstall oly_ai
-# Remove from apps.txt if needed
-# Remove apps/oly_ai directory
+bench pip uninstall oly_ai
+# Remove the app directory
+rm -rf apps/oly_ai
 ```
 
-This removes all DocTypes (AI Settings, AI Audit Log, AI Prompt Template) and their data. Back up audit logs first if needed.
+This removes all DocTypes (AI Settings, AI Audit Log, AI Chat Session, etc.) and their data. Back up audit logs and chat sessions first if needed.
