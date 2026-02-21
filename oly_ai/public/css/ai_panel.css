@@ -989,33 +989,9 @@
 /* ────────────────────────────────────────────
    11. DARK MODE OVERRIDES
    ──────────────────────────────────────────── */
-[data-theme="dark"] .oly-ai-msg-avatar-ai,
-[data-theme-mode="dark"] .oly-ai-msg-avatar-ai {
-  background: white !important;
-  color: black !important;
-}
-[data-theme="dark"] .oly-ai-msg-avatar-ai svg,
-[data-theme-mode="dark"] .oly-ai-msg-avatar-ai svg {
-  fill: black !important;
-}
-[data-theme="dark"] .oly-ai-send-btn,
-[data-theme-mode="dark"] .oly-ai-send-btn {
-  background: white !important;
-}
-[data-theme="dark"] .oly-ai-send-btn svg,
-[data-theme-mode="dark"] .oly-ai-send-btn svg {
-  fill: #1a1a1a !important;
-}
-[data-theme="dark"] .oly-ai-stop-btn,
-[data-theme-mode="dark"] .oly-ai-stop-btn {
-  background: white !important;
-}
-[data-theme="dark"] .oly-ai-stop-btn svg,
-[data-theme="dark"] .oly-ai-stop-btn svg rect,
-[data-theme-mode="dark"] .oly-ai-stop-btn svg,
-[data-theme-mode="dark"] .oly-ai-stop-btn svg rect {
-  fill: #1a1a1a !important;
-}
+/* Avatar + send/stop button colors are handled by the dynamic
+   <style id="oly-ai-theme-colors"> tag injected from JS,
+   which reacts to data-theme / data-theme-mode changes. */
 [data-theme="dark"] .oly-ai-bubble,
 [data-theme-mode="dark"] .oly-ai-bubble {
   background: white !important;

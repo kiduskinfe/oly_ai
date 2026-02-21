@@ -36,9 +36,37 @@ brain: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="curr
 };
 oly_ai.ICON = ICON;
 
+// ─── Theme Helper — injects/updates a <style> tag for avatar + button colors ──
+function _is_dark_theme() {
+  var el = document.documentElement;
+  return el.getAttribute('data-theme') === 'dark' || el.getAttribute('data-theme-mode') === 'dark';
+}
+function _apply_theme_colors() {
+  var id = 'oly-ai-theme-colors';
+  var tag = document.getElementById(id);
+  if (!tag) { tag = document.createElement('style'); tag.id = id; document.head.appendChild(tag); }
+  var dark = _is_dark_theme();
+  var bg = dark ? 'white' : 'var(--primary-color)';
+  var clr = dark ? 'black' : 'white';
+  var fill = dark ? '#1a1a1a' : 'white';
+  tag.textContent =
+    '.oly-ai-msg-avatar-ai{background:' + bg + ' !important;color:' + clr + ' !important;}' +
+    '.oly-ai-msg-avatar-ai svg{fill:' + clr + ' !important;}' +
+    '.oly-ai-send-btn{background:' + bg + ' !important;}' +
+    '.oly-ai-send-btn svg{fill:' + fill + ' !important;}' +
+    '.oly-ai-stop-btn{background:' + bg + ' !important;}' +
+    '.oly-ai-stop-btn svg,.oly-ai-stop-btn svg rect{fill:' + fill + ' !important;}';
+}
+// Watch for theme changes
+(function () {
+  _apply_theme_colors();
+  var obs = new MutationObserver(function () { _apply_theme_colors(); });
+  obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-theme-mode'] });
+})();
+
 // ─── AI Avatar Helper ────────────────────────────────────────────────
 function _ai_avatar_html() {
-  return '<div class="oly-ai-msg-avatar oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--primary-color);color:white;">' + ICON.sparkles_avatar + '</div>';
+  return '<div class="oly-ai-msg-avatar oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + ICON.sparkles_avatar + '</div>';
 }
 
 // ─── Brand Colors (from AI Settings) ───────────────────────────────────
@@ -348,7 +376,7 @@ oly_ai.Panel = class {
           '<textarea class="oly-ai-input" rows="1" placeholder="' + __("Ask anything...") + '" maxlength="4000"' +
           ' style="flex:1;margin:0;border-radius:18px;font-size:0.875rem;border:1px solid var(--dark-border-color);background:var(--control-bg);color:var(--text-color);padding:8px 14px;resize:none;min-height:36px;max-height:120px;line-height:1.4;outline:none;font-family:inherit;overflow:hidden;"></textarea>' +
           '<span id="panel-mic-btn" style="cursor:pointer;height:2rem;width:2rem;min-width:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex-shrink:0;transition:all 0.2s;" title="' + __("Voice input") + '">' + ICON.mic + '</span>' +
-          '<span class="oly-ai-send-btn" id="panel-send-btn" style="cursor:pointer;height:2rem;width:2rem;min-width:2rem;border-radius:50%;background:var(--primary-color);display:flex;align-items:center;justify-content:center;position:relative;z-index:2;flex-shrink:0;">' + ICON.send + '</span>' +
+          '<span class="oly-ai-send-btn" id="panel-send-btn" style="cursor:pointer;height:2rem;width:2rem;min-width:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;position:relative;z-index:2;flex-shrink:0;">' + ICON.send + '</span>' +
         '</div>' +
         '</div>' +
         '<div class="oly-ai-input-footer" style="display:flex;align-items:center;justify-content:space-between;padding-top:6px;">' +
@@ -1264,13 +1292,13 @@ oly_ai.Panel = class {
     var $btn = this.$panel.find('#panel-send-btn');
     if (is_sending) {
       $btn.addClass('oly-ai-stop-btn').removeClass('oly-ai-send-btn').html(ICON.stop)
-        .css({ background: 'var(--primary-color)', 'border-radius': '50%' });
+        .css({ 'border-radius': '50%' });
       $btn.off('click').on('click', function () { me._stop_generation(); });
       this.$input.attr('placeholder', __("Type your next message..."));
       this._safety_timer = setTimeout(function () { if (me.sending) me._set_sending(false); }, 120000);
     } else {
       $btn.addClass('oly-ai-send-btn').removeClass('oly-ai-stop-btn').html(ICON.send)
-        .css({ background: 'var(--primary-color)', 'border-radius': '50%' });
+        .css({ 'border-radius': '50%' });
       $btn.off('click').on('click', function () { me.send(); });
       var ph = { ask: __("Ask anything..."), research: __("Research in depth..."), agent: __("Describe what you need..."), execute: __("What action to execute?") };
       this.$input.attr('placeholder', ph[this.current_mode] || ph.ask);
