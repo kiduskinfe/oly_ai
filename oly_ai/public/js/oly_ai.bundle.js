@@ -36,6 +36,14 @@ brain: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="curr
 };
 oly_ai.ICON = ICON;
 
+// ─── AI Avatar Helper (theme-aware) ─────────────────────────────────
+function _ai_avatar_html() {
+  var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  var bg = dark ? '#e8e8e8' : 'var(--primary-color)';
+  var clr = dark ? '#1a1a1a' : 'white';
+  return '<div class="oly-ai-msg-avatar oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:' + bg + ';color:' + clr + ';">' + ICON.sparkles_avatar + '</div>';
+}
+
 // ─── Brand Colors (from AI Settings) ───────────────────────────────────
 oly_ai.brand_gradient = function () {
   var b = (frappe.boot && frappe.boot.oly_ai_brand) || {};
@@ -1314,9 +1322,7 @@ oly_ai.Panel = class {
       var lid = 'oly-t-' + Date.now();
       me.$body.append(
         '<div class="oly-ai-msg oly-ai-msg-ai" id="' + lid + '" style="display:flex;gap:8px;margin-bottom:12px;align-items:flex-start;">' +
-        '<div class="oly-ai-msg-avatar oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--primary-color);color:white;">' +
-          ICON.sparkles_avatar +
-        '</div>' +
+        _ai_avatar_html() +
         '<div class="oly-ai-msg-content" style="flex:1;min-width:0;background:var(--control-bg);border-radius:4px 18px 18px 18px;padding:10px 14px;font-size:0.8125rem;line-height:1.6;"><div class="oly-ai-typing"><span></span><span></span><span></span></div></div></div>'
       );
       me._scroll();
@@ -1542,9 +1548,7 @@ oly_ai.Panel = class {
       ? '<div style="margin:4px 0;"><img src="' + r.image_url + '" style="max-width:100%;max-height:300px;border-radius:10px;border:1px solid var(--border-color);cursor:pointer;" onclick="window.open(this.src,\'_blank\')" /></div>'
       : oly_ai.render_markdown(content);
     return '<div class="oly-ai-msg oly-ai-msg-ai"' + idx_attr + ' style="display:flex;gap:8px;margin-bottom:12px;align-items:flex-start;">' +
-      '<div class="oly-ai-msg-avatar oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--primary-color);color:white;">' +
-        ICON.sparkles_avatar +
-      '</div>' +
+      _ai_avatar_html() +
       '<div class="oly-ai-msg-content" style="flex:1;min-width:0;background:var(--control-bg);border-radius:4px 18px 18px 18px;padding:10px 14px;font-size:0.8125rem;line-height:1.6;">' + rendered +
         '<div class="oly-ai-msg-footer" style="display:flex;align-items:center;gap:8px;margin-top:6px;padding-top:4px;border-top:1px solid var(--border-color);">' +
           '<span class="oly-ai-copy-btn" style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-muted);font-size:0.75rem;" data-text="' + frappe.utils.escape_html(content) + '">' + ICON.copy + ' ' + __("Copy") + '</span>' +
@@ -1594,7 +1598,7 @@ oly_ai.Panel = class {
           if (mi && mi >= idx) $el.remove();
         });
         me._user_msg(values.content.trim());
-        me.$body.append('<div class="oly-ai-loading" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;"><div class="oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--primary-color);color:white;">' + ICON.sparkles_avatar + '</div><div class="oly-ai-typing"><span></span><span></span><span></span></div></div>');
+        me.$body.append('<div class="oly-ai-loading" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;">' + _ai_avatar_html() + '<div class="oly-ai-typing"><span></span><span></span><span></span></div></div>');
         me._scroll();
         frappe.call({
           method: "oly_ai.api.chat.edit_message",
@@ -1627,7 +1631,7 @@ oly_ai.Panel = class {
       var mi = parseInt($el.attr('data-msg-idx'));
       if (mi && mi >= idx) $el.remove();
     });
-    me.$body.append('<div class="oly-ai-loading" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;"><div class="oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--primary-color);color:white;">' + ICON.sparkles_avatar + '</div><div class="oly-ai-typing"><span></span><span></span><span></span></div></div>');
+    me.$body.append('<div class="oly-ai-loading" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;">' + _ai_avatar_html() + '<div class="oly-ai-typing"><span></span><span></span><span></span></div></div>');
     me._scroll();
     frappe.call({
       method: "oly_ai.api.chat.regenerate_response",
