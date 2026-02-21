@@ -626,6 +626,13 @@
 .oly-ai-msg-avatar-ai svg {
   fill: var(--primary-color);
 }
+[data-theme="dark"] .oly-ai-msg-avatar-ai {
+  background: #e8e8e8 !important;
+  color: #1a1a1a !important;
+}
+[data-theme="dark"] .oly-ai-msg-avatar-ai svg {
+  fill: #1a1a1a !important;
+}
 .oly-ai-msg-avatar-user {
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: white;

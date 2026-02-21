@@ -13,7 +13,7 @@ frappe.provide("oly_ai");
 const ICON = {
 sparkles: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"/></svg>',
 sparkles_lg: '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"/></svg>',
-sparkles_avatar: '<svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"/></svg>',
+sparkles_avatar: '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"/></svg>',
 send: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z"/></svg>',
 plus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
 close_icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
@@ -1314,7 +1314,7 @@ oly_ai.Panel = class {
       var lid = 'oly-t-' + Date.now();
       me.$body.append(
         '<div class="oly-ai-msg oly-ai-msg-ai" id="' + lid + '" style="display:flex;gap:8px;margin-bottom:12px;align-items:flex-start;">' +
-        '<div class="oly-ai-msg-avatar oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--primary-color);">' +
+        '<div class="oly-ai-msg-avatar oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--primary-color);color:white;">' +
           ICON.sparkles_avatar +
         '</div>' +
         '<div class="oly-ai-msg-content" style="flex:1;min-width:0;background:var(--control-bg);border-radius:4px 18px 18px 18px;padding:10px 14px;font-size:0.8125rem;line-height:1.6;"><div class="oly-ai-typing"><span></span><span></span><span></span></div></div></div>'
@@ -1542,7 +1542,7 @@ oly_ai.Panel = class {
       ? '<div style="margin:4px 0;"><img src="' + r.image_url + '" style="max-width:100%;max-height:300px;border-radius:10px;border:1px solid var(--border-color);cursor:pointer;" onclick="window.open(this.src,\'_blank\')" /></div>'
       : oly_ai.render_markdown(content);
     return '<div class="oly-ai-msg oly-ai-msg-ai"' + idx_attr + ' style="display:flex;gap:8px;margin-bottom:12px;align-items:flex-start;">' +
-      '<div class="oly-ai-msg-avatar oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--primary-color);">' +
+      '<div class="oly-ai-msg-avatar oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--primary-color);color:white;">' +
         ICON.sparkles_avatar +
       '</div>' +
       '<div class="oly-ai-msg-content" style="flex:1;min-width:0;background:var(--control-bg);border-radius:4px 18px 18px 18px;padding:10px 14px;font-size:0.8125rem;line-height:1.6;">' + rendered +
@@ -1594,7 +1594,7 @@ oly_ai.Panel = class {
           if (mi && mi >= idx) $el.remove();
         });
         me._user_msg(values.content.trim());
-        me.$body.append('<div class="oly-ai-loading" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;"><div class="oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--primary-color);">' + ICON.sparkles_avatar + '</div><div class="oly-ai-typing"><span></span><span></span><span></span></div></div>');
+        me.$body.append('<div class="oly-ai-loading" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;"><div class="oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--primary-color);color:white;">' + ICON.sparkles_avatar + '</div><div class="oly-ai-typing"><span></span><span></span><span></span></div></div>');
         me._scroll();
         frappe.call({
           method: "oly_ai.api.chat.edit_message",
@@ -1627,7 +1627,7 @@ oly_ai.Panel = class {
       var mi = parseInt($el.attr('data-msg-idx'));
       if (mi && mi >= idx) $el.remove();
     });
-    me.$body.append('<div class="oly-ai-loading" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;"><div class="oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--primary-color);">' + ICON.sparkles_avatar + '</div><div class="oly-ai-typing"><span></span><span></span><span></span></div></div>');
+    me.$body.append('<div class="oly-ai-loading" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;"><div class="oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--primary-color);color:white;">' + ICON.sparkles_avatar + '</div><div class="oly-ai-typing"><span></span><span></span><span></span></div></div>');
     me._scroll();
     frappe.call({
       method: "oly_ai.api.chat.regenerate_response",
