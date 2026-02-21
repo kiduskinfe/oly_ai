@@ -55,7 +55,12 @@ function _apply_theme_colors() {
     '.oly-ai-send-btn{background:' + bg + ' !important;}' +
     '.oly-ai-send-btn svg{fill:' + fill + ' !important;}' +
     '.oly-ai-stop-btn{background:' + bg + ' !important;}' +
-    '.oly-ai-stop-btn svg,.oly-ai-stop-btn svg rect{fill:' + fill + ' !important;}';
+    '.oly-ai-stop-btn svg,.oly-ai-stop-btn svg rect{fill:' + fill + ' !important;}' +
+    '.oly-ai-typing{display:flex;gap:6px;padding:8px 4px;align-items:center;min-height:24px;}' +
+    '.oly-ai-typing span{width:8px;height:8px;min-width:8px;min-height:8px;border-radius:50%;background:' + (dark ? 'var(--gray-400)' : 'var(--gray-500)') + ';display:inline-block;animation:oly-dot 1.4s infinite both;}' +
+    '.oly-ai-typing span:nth-child(2){animation-delay:0.2s;}' +
+    '.oly-ai-typing span:nth-child(3){animation-delay:0.4s;}' +
+    '@keyframes oly-dot{0%,80%,100%{opacity:0.3;transform:scale(0.8);}40%{opacity:1;transform:scale(1);}}';
 }
 // Watch for theme changes
 (function () {
