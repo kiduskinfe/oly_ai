@@ -217,7 +217,18 @@ oly_ai.Panel = class {
     this._history_filter = 'mine'; // 'mine' | 'shared' | 'all'
     this.create_app();
     this._load_model_catalog();
-    this._load_sessions();
+    this._load_sessions(function () {
+      // Restore last active session from localStorage on page reload
+      var _saved = localStorage.getItem('oly_ai_session');
+      if (_saved) {
+        var found = me.sessions.find(function (s) { return s.name === _saved; });
+        if (found) {
+          me._open_session(_saved);
+        } else {
+          localStorage.removeItem('oly_ai_session');
+        }
+      }
+    });
     this._load_user_access();
   }
 
@@ -405,14 +416,17 @@ oly_ai.Panel = class {
     this._check_ask_ai_page();
     $(document).on('page-change.oly_ai', function () {
       me._check_ask_ai_page();
-      me._update_context_bar();
-      // Refresh welcome chips with new page context if no active session
-      if (!me.session && me.view === 'chat') {
-        setTimeout(function () { me.show_welcome(); }, 400);
-      }
+      // Delay context update — cur_frm/cur_list aren't set until after page renders
+      setTimeout(function () {
+        me._update_context_bar();
+        // Refresh welcome chips with new page context if no active session
+        if (!me.session && me.view === 'chat') {
+          me.show_welcome();
+        }
+      }, 800);
     });
     // Initial context bar update
-    setTimeout(function () { me._update_context_bar(); }, 600);
+    setTimeout(function () { me._update_context_bar(); }, 1000);
 
     $(document).on('keydown.oly_ai_shortcut', function (e) {
       if ((e.ctrlKey || e.metaKey) && e.key === '/') {
@@ -745,6 +759,8 @@ oly_ai.Panel = class {
     if (!this.session && this.view === 'chat' && !this.$body.children().length) {
       this.show_welcome();
     }
+    // Refresh context bar each time panel opens
+    this._update_context_bar();
     if (this.view === 'chat') this.$input.focus();
   }
 
@@ -1142,6 +1158,7 @@ oly_ai.Panel = class {
   // ── Session Management ──
   new_chat() {
     this.session = null;
+    localStorage.removeItem('oly_ai_session');
     if (this.sending) this._stop_generation();
     this.$title.text(__("New Chat"));
     this.show_welcome();
@@ -1152,6 +1169,7 @@ oly_ai.Panel = class {
   _open_session(name) {
     var me = this;
     this.session = name;
+    localStorage.setItem('oly_ai_session', name);
     if (this.sending) this._stop_generation();
     var s = this.sessions.find(function (x) { return x.name === name; });
     this.$title.text(s ? s.title : __("Chat"));
@@ -1360,6 +1378,7 @@ oly_ai.Panel = class {
           var s = r && r.message;
           if (!s || !s.name) { me._set_sending(false); frappe.show_alert({ message: __("Failed to create session"), indicator: "red" }); return; }
           me.session = s.name;
+          localStorage.setItem('oly_ai_session', s.name);
           me.$title.text(s.title || __("New Chat"));
           fire(s.name);
         },
