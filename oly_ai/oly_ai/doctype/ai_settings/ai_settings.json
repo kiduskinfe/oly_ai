@@ -51,6 +51,7 @@
   "brand_color_from",
   "brand_color_to",
   "apply_brand_to_header",
+  "apply_brand_to_navbar",
   "logging_section",
   "enable_audit_logging",
   "enable_cost_tracking",
@@ -393,11 +394,18 @@
    "description": "End color of the AI icon gradient (e.g. #ea580c for dark orange)"
   },
   {
-   "default": "1",
+   "default": "0",
    "fieldname": "apply_brand_to_header",
    "fieldtype": "Check",
    "label": "Apply Brand Color to AI Assistant Header",
-   "description": "When enabled, the AI Assistant dialog header uses the brand gradient background instead of the default theme color."
+   "description": "When enabled, the AI Assistant dialog header uses the brand gradient background with white text."
+  },
+  {
+   "default": "0",
+   "fieldname": "apply_brand_to_navbar",
+   "fieldtype": "Check",
+   "label": "Apply Brand Color to Navbar AI Icon",
+   "description": "When enabled, the AI sparkles icon in the top navbar uses the brand color instead of the default muted color."
   },
   {
    "fieldname": "self_hosted_section",
