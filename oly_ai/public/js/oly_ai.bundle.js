@@ -406,6 +406,10 @@ oly_ai.Panel = class {
     $(document).on('page-change.oly_ai', function () {
       me._check_ask_ai_page();
       me._update_context_bar();
+      // Refresh welcome chips with new page context if no active session
+      if (!me.session && me.view === 'chat') {
+        setTimeout(function () { me.show_welcome(); }, 400);
+      }
     });
     // Initial context bar update
     setTimeout(function () { me._update_context_bar(); }, 600);
@@ -737,6 +741,10 @@ oly_ai.Panel = class {
   show_chat_widget() {
     this.is_open = true;
     this.$panel.fadeIn(250);
+    // Defensive: if body is empty and no active session, re-render welcome
+    if (!this.session && this.view === 'chat' && !this.$body.children().length) {
+      this.show_welcome();
+    }
     if (this.view === 'chat') this.$input.focus();
   }
 
@@ -1074,6 +1082,10 @@ oly_ai.Panel = class {
 
   // ── Welcome ──
   show_welcome() {
+    try { this._render_welcome(); } catch (e) { console.warn('oly_ai: show_welcome error', e); }
+  }
+
+  _render_welcome() {
     // Smart chips — adapt to current page context
     var ctx = oly_ai.get_page_context();
     var chips;
