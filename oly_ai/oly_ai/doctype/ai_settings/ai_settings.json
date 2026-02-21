@@ -50,6 +50,7 @@
   "branding_section",
   "brand_color_from",
   "brand_color_to",
+  "apply_brand_to_header",
   "logging_section",
   "enable_audit_logging",
   "enable_cost_tracking",
@@ -390,6 +391,13 @@
    "label": "Brand Gradient End",
    "default": "#ea580c",
    "description": "End color of the AI icon gradient (e.g. #ea580c for dark orange)"
+  },
+  {
+   "default": "1",
+   "fieldname": "apply_brand_to_header",
+   "fieldtype": "Check",
+   "label": "Apply Brand Color to AI Assistant Header",
+   "description": "When enabled, the AI Assistant dialog header uses the brand gradient background instead of the default theme color."
   },
   {
    "fieldname": "self_hosted_section",

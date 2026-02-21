@@ -8,9 +8,11 @@ def extend_bootinfo(bootinfo):
 		bootinfo.oly_ai_brand = {
 			"color_from": settings.brand_color_from or "#f97316",
 			"color_to": settings.brand_color_to or "#ea580c",
+			"apply_to_header": bool(settings.apply_brand_to_header),
 		}
 	except Exception:
 		bootinfo.oly_ai_brand = {
 			"color_from": "#f97316",
 			"color_to": "#ea580c",
+			"apply_to_header": True,
 		}

@@ -279,17 +279,20 @@ oly_ai.Panel = class {
       return '<option value="' + m.value + '"' + (m.value === me.current_mode ? ' selected' : '') + '>' + m.label + '</option>';
     }).join('');
 
+    var _brand_hdr = ((frappe.boot && frappe.boot.oly_ai_brand) || {}).apply_to_header;
+    var _hdr_bg = _brand_hdr ? 'background:' + oly_ai.brand_gradient() + ';' : '';
+    var _hdr_icon_clr = _brand_hdr ? '#fff' : oly_ai.brand_color();
+    var _hdr_title_clr = _brand_hdr ? '#fff' : 'var(--heading-color)';
+    var _hdr_act_clr = _brand_hdr ? 'rgba(255,255,255,0.85)' : 'var(--text-muted)';
     this.$container.append(
-      '<div class="oly-ai-header-row1" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px 6px;flex-shrink:0;">' +
+      '<div class="oly-ai-header-row1" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px 6px;flex-shrink:0;' + _hdr_bg + '">' +
         '<div style="display:flex;align-items:center;gap:6px;">' +
-          '<span style="display:flex;align-items:center;color:' + oly_ai.brand_color() + ';">' + ICON.sparkles + '</span>' +
-          '<span style="font-weight:600;font-size:14px;color:var(--heading-color);">' + __("AI Assistant") + '</span>' +
+          '<span style="display:flex;align-items:center;color:' + _hdr_icon_clr + ';">' + ICON.sparkles + '</span>' +
+          '<span style="font-weight:600;font-size:14px;color:' + _hdr_title_clr + ';">' + __("AI Assistant") + '</span>' +
         '</div>' +
         '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">' +
-          '<a href="/app/ai-user-memory" class="oly-ai-hact" style="display:flex;align-items:center;padding:6px;border-radius:6px;color:var(--text-muted);text-decoration:none;" title="' + __("Memory") + '">' + ICON.brain + '</a>' +
-          '<span class="oly-ai-hact" data-action="export" style="display:flex;align-items:center;padding:6px;border-radius:6px;color:var(--text-muted);cursor:pointer;" title="' + __("Export chat") + '"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>' +
-          '<a href="/app/ask-ai" class="oly-ai-hact" style="display:flex;align-items:center;padding:6px;border-radius:6px;color:var(--text-muted);text-decoration:none;" title="' + __("Full page") + '">' + ICON.expand + '</a>' +
-          '<span class="oly-ai-hact" data-action="new" style="display:flex;align-items:center;padding:6px;border-radius:6px;color:var(--text-muted);cursor:pointer;" title="' + __("New chat") + '">' + ICON.plus + '</span>' +
+          '<a href="/app/ask-ai" class="oly-ai-hact" style="display:flex;align-items:center;padding:6px;border-radius:6px;color:' + _hdr_act_clr + ';text-decoration:none;" title="' + __("Full page") + '">' + ICON.expand + '</a>' +
+          '<span class="oly-ai-hact" data-action="new" style="display:flex;align-items:center;padding:6px;border-radius:6px;color:' + _hdr_act_clr + ';cursor:pointer;" title="' + __("New chat") + '">' + ICON.plus + '</span>' +
         '</div>' +
       '</div>'
     );
