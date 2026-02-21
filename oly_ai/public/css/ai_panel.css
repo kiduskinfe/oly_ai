@@ -675,10 +675,11 @@
 }
 
 /* Typing indicator */
-.oly-ai-typing { display: flex; gap: 4px; padding: 8px 4px; align-items: center; }
+.oly-ai-typing { display: flex; gap: 6px; padding: 8px 4px; align-items: center; min-height: 24px; }
 .oly-ai-typing span {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--text-muted);
+  width: 8px; height: 8px; min-width: 8px; min-height: 8px; border-radius: 50%;
+  background: var(--gray-500);
+  display: inline-block;
   animation: oly-dot 1.4s infinite both;
 }
 .oly-ai-typing span:nth-child(1) { animation-delay: 0s; }

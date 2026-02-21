@@ -1620,7 +1620,7 @@ oly_ai.Panel = class {
           if (mi && mi >= idx) $el.remove();
         });
         me._user_msg(values.content.trim());
-        me.$body.append('<div class="oly-ai-loading" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;">' + _ai_avatar_html() + '<div class="oly-ai-typing"><span></span><span></span><span></span></div></div>');
+        me.$body.append('<div class="oly-ai-loading oly-ai-msg oly-ai-msg-ai" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;">' + _ai_avatar_html() + '<div class="oly-ai-msg-content" style="flex:1;min-width:0;background:var(--control-bg);border-radius:4px 18px 18px 18px;padding:10px 14px;"><div class="oly-ai-typing"><span></span><span></span><span></span></div></div></div>');
         me._scroll();
         frappe.call({
           method: "oly_ai.api.chat.edit_message",
@@ -1653,7 +1653,7 @@ oly_ai.Panel = class {
       var mi = parseInt($el.attr('data-msg-idx'));
       if (mi && mi >= idx) $el.remove();
     });
-    me.$body.append('<div class="oly-ai-loading" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;">' + _ai_avatar_html() + '<div class="oly-ai-typing"><span></span><span></span><span></span></div></div>');
+    me.$body.append('<div class="oly-ai-loading oly-ai-msg oly-ai-msg-ai" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;">' + _ai_avatar_html() + '<div class="oly-ai-msg-content" style="flex:1;min-width:0;background:var(--control-bg);border-radius:4px 18px 18px 18px;padding:10px 14px;"><div class="oly-ai-typing"><span></span><span></span><span></span></div></div></div>');
     me._scroll();
     frappe.call({
       method: "oly_ai.api.chat.regenerate_response",
