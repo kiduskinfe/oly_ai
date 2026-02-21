@@ -376,8 +376,9 @@ oly_ai.Panel = class {
     if (this.is_desk) {
       var $navbar_ul = $('header.navbar > .container > .navbar-collapse > ul.navbar-nav');
       var $notif = $navbar_ul.find('.dropdown-notifications').first();
+      var _nav_clr = _brand_hdr ? 'color:' + oly_ai.brand_color() + ';' : '';
       var ai_li = '<li class="nav-item dropdown dropdown-mobile oly-ai-nav" title="' + __('AI Assistant') + '">' +
-        '<span class="btn-reset nav-link notifications-icon text-muted">' + ICON.sparkles + '</span></li>';
+        '<span class="btn-reset nav-link notifications-icon' + (_brand_hdr ? '' : ' text-muted') + '" style="' + _nav_clr + '">' + ICON.sparkles + '</span></li>';
       if ($notif.length) {
         $(ai_li).insertBefore($notif);
       } else {
