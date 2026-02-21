@@ -182,10 +182,22 @@ def ask_erp(question):
 	except Exception as e:
 		frappe.logger("oly_ai").debug(f"RAG retrieval failed (non-blocking): {e}")
 
-	system_prompt = """You are an AI assistant for ERPNext ERP system at OLY Technologies.
+	# Load system prompt from AI Prompt Template (user-configurable)
+	system_prompt = None
+	try:
+		if frappe.db.exists("AI Prompt Template", "Default Ask AI"):
+			template = frappe.get_cached_doc("AI Prompt Template", "Default Ask AI")
+			if template.system_prompt and template.enabled:
+				system_prompt = template.system_prompt
+	except Exception:
+		pass
+
+	# Fallback to default if template not found
+	if not system_prompt:
+		system_prompt = """You are an AI assistant for the business system.
 You help employees with questions about:
 - Company SOPs and policies
-- How to use ERPNext features
+- How to use system features
 - Business processes and workflows
 - HR policies, leave rules, payroll questions
 - Sales and procurement processes
@@ -195,7 +207,7 @@ Rules:
 - Be concise and actionable.
 - Reference specific document names or processes when possible.
 - Never make up information about company policies.
-- If the question requires accessing specific data, tell the user which DocType/report to check.
+- If the question requires accessing specific data, tell the user which report to check.
 - When referencing sources, cite the source number [Source N]."""
 
 	if rag_context:
