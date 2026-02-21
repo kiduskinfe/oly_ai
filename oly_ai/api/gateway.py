@@ -182,8 +182,20 @@ def ask_erp(question):
 	except Exception as e:
 		frappe.logger("oly_ai").debug(f"RAG retrieval failed (non-blocking): {e}")
 
-	# Load system prompt from AI Prompt Template (user-configurable)
+	# Load system prompt - priority order:
+	# 1. AI Settings → system_prompt (global)
+	# 2. AI Prompt Template → "Default Ask AI" (feature-specific override)
+	# 3. Hardcoded fallback
 	system_prompt = None
+
+	# 1. Check AI Settings (global)
+	try:
+		if settings.get("system_prompt"):
+			system_prompt = settings.system_prompt
+	except Exception:
+		pass
+
+	# 2. Check AI Prompt Template (can override global)
 	try:
 		if frappe.db.exists("AI Prompt Template", "Default Ask AI"):
 			template = frappe.get_cached_doc("AI Prompt Template", "Default Ask AI")
@@ -192,7 +204,7 @@ def ask_erp(question):
 	except Exception:
 		pass
 
-	# Fallback to default if template not found
+	# 3. Fallback to default if nothing configured
 	if not system_prompt:
 		system_prompt = """You are an AI assistant for the business system.
 You help employees with questions about:

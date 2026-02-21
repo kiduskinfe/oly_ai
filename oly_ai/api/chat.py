@@ -95,13 +95,14 @@ def get_system_prompt(mode="ask"):
 	"""Get the system prompt for a given mode with dynamic company context.
 
 	Priority:
-	1. AI Prompt Template (user-configurable in database)
-	2. Fallback to hardcoded defaults
+	1. AI Prompt Template (feature-specific override)
+	2. AI Settings → system_prompt (global)
+	3. Fallback to hardcoded defaults
 	"""
-	# Try to load from AI Prompt Template first
+	# 1. Try to load from AI Prompt Template first (feature-specific override)
 	template_name_map = {
 		"ask": "Default Ask AI",
-		"agent": "Default Ask AI",  # Agent uses same base but could have override
+		"agent": "Default Ask AI",
 		"execute": "Default Ask AI",
 		"research": "Default Ask AI",
 	}
@@ -111,12 +112,19 @@ def get_system_prompt(mode="ask"):
 		if frappe.db.exists("AI Prompt Template", template_name):
 			template = frappe.get_cached_doc("AI Prompt Template", template_name)
 			if template.system_prompt and template.enabled:
-				# Template found and has content - use it
 				return template.system_prompt
 	except Exception:
-		pass  # Fall through to hardcoded defaults
+		pass
 
-	# Fallback: build dynamic prompt from code
+	# 2. Try AI Settings → system_prompt (global)
+	try:
+		settings = frappe.get_cached_doc("AI Settings")
+		if settings.get("system_prompt"):
+			return settings.system_prompt
+	except Exception:
+		pass
+
+	# 3. Fallback: build dynamic prompt from code
 	company = _build_company_context()
 	info = _get_company_info()
 	company_name = info.get("name", "the company")

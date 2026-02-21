@@ -19,6 +19,8 @@
   "column_break_params",
   "top_p",
   "timeout_seconds",
+  "system_prompt_section",
+  "system_prompt",
   "training_section",
   "indexed_doctypes",
   "training_actions",
@@ -152,6 +154,18 @@
    "label": "Timeout (seconds)",
    "default": 30,
    "description": "Max wait time for AI response"
+  },
+  {
+   "fieldname": "system_prompt_section",
+   "fieldtype": "Section Break",
+   "label": "Global System Prompt"
+  },
+  {
+   "fieldname": "system_prompt",
+   "fieldtype": "Code",
+   "label": "System Prompt",
+   "options": "Markdown",
+   "description": "Global AI instructions applied to all requests. AI Prompt Templates can override this for specific features."
   },
   {
    "fieldname": "training_section",
