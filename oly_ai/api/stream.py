@@ -257,6 +257,9 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 		start_time = time.time()
 		requested_model = model
 
+		# Initialize the LLM provider
+		provider = LLMProvider(settings)
+
 		# ── PII masking — strip sensitive data before sending to provider ──
 		try:
 			from oly_ai.core.pii_filter import filter_messages_pii
