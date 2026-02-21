@@ -38,10 +38,7 @@ oly_ai.ICON = ICON;
 
 // ─── AI Avatar Helper ────────────────────────────────────────────────
 function _ai_avatar_html() {
-  var dark = (document.documentElement.getAttribute('data-theme') === 'dark' || document.documentElement.getAttribute('data-theme-mode') === 'dark');
-  var bg = dark ? 'white' : 'var(--primary-color)';
-  var clr = dark ? 'black' : 'white';
-  return '<div class="oly-ai-msg-avatar oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:' + bg + ';color:' + clr + ';">' + ICON.sparkles_avatar + '</div>';
+  return '<div class="oly-ai-msg-avatar oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--primary-color);color:white;">' + ICON.sparkles_avatar + '</div>';
 }
 
 // ─── Brand Colors (from AI Settings) ───────────────────────────────────
@@ -1267,13 +1264,13 @@ oly_ai.Panel = class {
     var $btn = this.$panel.find('#panel-send-btn');
     if (is_sending) {
       $btn.addClass('oly-ai-stop-btn').removeClass('oly-ai-send-btn').html(ICON.stop)
-        .css({ background: '', 'border-radius': '50%' });
+        .css({ background: 'var(--primary-color)', 'border-radius': '50%' });
       $btn.off('click').on('click', function () { me._stop_generation(); });
       this.$input.attr('placeholder', __("Type your next message..."));
       this._safety_timer = setTimeout(function () { if (me.sending) me._set_sending(false); }, 120000);
     } else {
       $btn.addClass('oly-ai-send-btn').removeClass('oly-ai-stop-btn').html(ICON.send)
-        .css({ background: '', 'border-radius': '50%' });
+        .css({ background: 'var(--primary-color)', 'border-radius': '50%' });
       $btn.off('click').on('click', function () { me.send(); });
       var ph = { ask: __("Ask anything..."), research: __("Research in depth..."), agent: __("Describe what you need..."), execute: __("What action to execute?") };
       this.$input.attr('placeholder', ph[this.current_mode] || ph.ask);

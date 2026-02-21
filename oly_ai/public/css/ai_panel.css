@@ -629,13 +629,6 @@
 .oly-ai-msg-avatar-ai svg {
   fill: currentColor;
 }
-[data-theme="dark"] .oly-ai-msg-avatar-ai {
-  background: white !important;
-  color: black !important;
-}
-[data-theme="dark"] .oly-ai-msg-avatar-ai svg {
-  fill: black !important;
-}
 .oly-ai-msg-avatar-user {
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: white;
@@ -996,47 +989,63 @@
 /* ────────────────────────────────────────────
    11. DARK MODE OVERRIDES
    ──────────────────────────────────────────── */
-[data-theme="dark"] .oly-ai-msg-avatar-ai {
+[data-theme="dark"] .oly-ai-msg-avatar-ai,
+[data-theme-mode="dark"] .oly-ai-msg-avatar-ai {
   background: white !important;
   color: black !important;
 }
-[data-theme="dark"] .oly-ai-msg-avatar-ai svg {
+[data-theme="dark"] .oly-ai-msg-avatar-ai svg,
+[data-theme-mode="dark"] .oly-ai-msg-avatar-ai svg {
   fill: black !important;
 }
-[data-theme="dark"] .oly-ai-send-btn {
+[data-theme="dark"] .oly-ai-send-btn,
+[data-theme-mode="dark"] .oly-ai-send-btn {
   background: white !important;
 }
-[data-theme="dark"] .oly-ai-send-btn svg {
+[data-theme="dark"] .oly-ai-send-btn svg,
+[data-theme-mode="dark"] .oly-ai-send-btn svg {
   fill: #1a1a1a !important;
 }
-[data-theme="dark"] .oly-ai-stop-btn {
+[data-theme="dark"] .oly-ai-stop-btn,
+[data-theme-mode="dark"] .oly-ai-stop-btn {
   background: white !important;
 }
 [data-theme="dark"] .oly-ai-stop-btn svg,
-[data-theme="dark"] .oly-ai-stop-btn svg rect {
+[data-theme="dark"] .oly-ai-stop-btn svg rect,
+[data-theme-mode="dark"] .oly-ai-stop-btn svg,
+[data-theme-mode="dark"] .oly-ai-stop-btn svg rect {
   fill: #1a1a1a !important;
 }
-[data-theme="dark"] .oly-ai-bubble {
+[data-theme="dark"] .oly-ai-bubble,
+[data-theme-mode="dark"] .oly-ai-bubble {
   background: white !important;
 }
-[data-theme="dark"] .oly-ai-bubble svg {
+[data-theme="dark"] .oly-ai-bubble svg,
+[data-theme-mode="dark"] .oly-ai-bubble svg {
   fill: #1a1a1a !important;
 }
-[data-theme="dark"] .oly-ai-msg-bubble-user {
+[data-theme="dark"] .oly-ai-msg-bubble-user,
+[data-theme-mode="dark"] .oly-ai-msg-bubble-user {
   background: var(--gray-700) !important;
 }
-[data-theme="dark"] .oly-retry-btn {
+[data-theme="dark"] .oly-retry-btn,
+[data-theme-mode="dark"] .oly-retry-btn {
   color: var(--primary-color) !important;
 }
 [data-theme="dark"] .oly-ai-regen-btn:hover,
-[data-theme="dark"] .oly-fp-edit-btn:hover {
+[data-theme="dark"] .oly-fp-edit-btn:hover,
+[data-theme-mode="dark"] .oly-ai-regen-btn:hover,
+[data-theme-mode="dark"] .oly-fp-edit-btn:hover {
   color: var(--text-color) !important;
 }
-[data-theme="dark"] .oly-ai-msg-error {
+[data-theme="dark"] .oly-ai-msg-error,
+[data-theme-mode="dark"] .oly-ai-msg-error {
   background: rgba(239,68,68,0.12);
   border-color: rgba(239,68,68,0.3);
 }
 [data-theme="dark"] .oly-mention-item:hover,
-[data-theme="dark"] .oly-mention-item.active {
+[data-theme="dark"] .oly-mention-item.active,
+[data-theme-mode="dark"] .oly-mention-item:hover,
+[data-theme-mode="dark"] .oly-mention-item.active {
   background: var(--gray-700) !important;
 }
