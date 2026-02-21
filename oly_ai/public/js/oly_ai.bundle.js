@@ -628,6 +628,23 @@ oly_ai.Panel = class {
         me._load_sessions(function () { me._render_history(); });
       });
     });
+    this.$history.find('[data-act="rename"]').on('click', function (e) {
+      e.stopPropagation();
+      var sn = $(this).data('name');
+      var old_title = $(this).attr('data-title') || '';
+      frappe.prompt(
+        [{ fieldname: 'title', fieldtype: 'Data', label: __('New Title'), reqd: 1, default: old_title }],
+        function (values) {
+          frappe.xcall('oly_ai.api.chat.rename_session', { session_name: sn, title: values.title }).then(function () {
+            frappe.show_alert({ message: __('Renamed'), indicator: 'green' });
+            if (me.session === sn) me.$title.text(values.title);
+            me._load_sessions(function () { me._render_history(); });
+          });
+        },
+        __('Rename Chat'),
+        __('Rename')
+      );
+    });
     // Deep search: local filter + API search for messages
     var _hist_search_timer = null;
     this.$history.find('.oly-ai-hist-search').on('input', function () {
@@ -780,6 +797,9 @@ oly_ai.Panel = class {
         ' style="background:none;border:none;padding:4px;border-radius:4px;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;">' +
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + pin_fill + '" stroke="' + pin_stroke + '" stroke-width="2"><path d="M12 2l1.09 3.26L16 6l-2 2.5L14.5 12 12 10.5 9.5 12 10 8.5 8 6l2.91-.74L12 2z"/></svg></button>';
     if (is_mine) {
+      html += '<button class="oly-ai-hist-act" data-act="rename" data-name="' + s.name + '" data-title="' + frappe.utils.escape_html(s.title || '') + '" title="' + __("Rename") + '"' +
+        ' style="background:none;border:none;padding:4px;border-radius:4px;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>';
       html += '<button class="oly-ai-hist-act" data-act="share" data-name="' + s.name + '" title="' + __("Share") + '"' +
         ' style="background:none;border:none;padding:4px;border-radius:4px;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;">' +
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>';
