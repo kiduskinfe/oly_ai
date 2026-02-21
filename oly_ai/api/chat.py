@@ -567,7 +567,8 @@ def regenerate_response(session_name, message_idx, model=None, mode=None):
 
 
 @frappe.whitelist()
-def send_message(session_name, message, model=None, mode=None, file_urls=None):
+def send_message(session_name, message, model=None, mode=None, file_urls=None,
+				   page_doctype=None, page_docname=None, list_doctype=None, page_trail=None):
 	"""Send a user message and get AI response. Appends both to the session.
 
 	Args:
@@ -576,6 +577,10 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 		model: (optional) Model name override, e.g. "gpt-4o"
 		mode: (optional) Interaction mode: "ask" (default), "agent", or "execute"
 		file_urls: (optional) JSON-encoded list of Frappe file URLs for vision
+		page_doctype: (optional) DocType of the page the user is currently viewing
+		page_docname: (optional) Document name the user is currently viewing
+		list_doctype: (optional) DocType list view the user is browsing
+		page_trail: (optional) JSON-encoded recent navigation history
 
 	Returns:
 		dict: {"content", "model", "cost", "tokens", "response_time", "sources"}
@@ -742,6 +747,17 @@ def send_message(session_name, message, model=None, mode=None, file_urls=None):
 				})
 	except Exception as e:
 		frappe.logger("oly_ai").debug(f"Mention context failed: {e}")
+
+	# Page context — inject current document data if user is viewing a specific page
+	try:
+		page_ctx = _build_page_context(page_doctype, page_docname, list_doctype, page_trail)
+		if page_ctx:
+			llm_messages.append({
+				"role": "system",
+				"content": page_ctx,
+			})
+	except Exception as e:
+		frappe.logger("oly_ai").debug(f"Page context failed: {e}")
 
 	llm_messages.extend(conversation)
 
@@ -1673,6 +1689,77 @@ def get_document_suggestions(doctype, query=""):
 		title = r.get(title_field) if title_field != "name" else ""
 		out.append({"name": r.name, "title": title or ""})
 	return out
+
+
+def _build_page_context(page_doctype=None, page_docname=None, list_doctype=None, page_trail=None):
+	"""Build context from the user's current page and recent navigation.
+
+	This gives the AI awareness of:
+	- What document the user is currently viewing (full field data + communications)
+	- What list view they're browsing
+	- Their recent navigation trail (workflow understanding)
+
+	Returns:
+		str or None: formatted context text to inject as a system message
+	"""
+	parts = []
+
+	# 1. Current document context — full data via get_document_context
+	if page_doctype and page_docname:
+		try:
+			if frappe.has_permission(page_doctype, "read", page_docname):
+				from oly_ai.core.context import get_document_context
+				doc_ctx = get_document_context(page_doctype, page_docname, max_length=6000)
+				if doc_ctx:
+					parts.append(
+						"## Currently Viewing Document\n"
+						"The user is currently looking at this document in their browser. "
+						"They may ask questions about it without specifying which document.\n\n"
+						f"{doc_ctx}"
+					)
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"Page doc context failed for {page_doctype}/{page_docname}: {e}")
+
+	# 2. List view context — user is browsing a list
+	if list_doctype and not (page_doctype and page_docname):
+		try:
+			if frappe.has_permission(list_doctype, "read"):
+				meta = frappe.get_meta(list_doctype)
+				total = frappe.db.count(list_doctype)
+				parts.append(
+					f"## Currently Browsing\n"
+					f"The user is viewing the **{list_doctype}** list view ({total:,} total records). "
+					f"They may ask questions about this DocType, how to create one, filtering, etc."
+				)
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"List context failed for {list_doctype}: {e}")
+
+	# 3. Navigation trail — recent pages visited
+	if page_trail:
+		try:
+			trail = json.loads(page_trail) if isinstance(page_trail, str) else page_trail
+			if trail and len(trail) > 1:
+				trail_items = []
+				for t in trail[-5:]:
+					if t.get("doctype") and t.get("docname"):
+						trail_items.append(f"- {t['doctype']}: {t['docname']}")
+					elif t.get("list_doctype"):
+						trail_items.append(f"- {t['list_doctype']} list")
+					elif t.get("route"):
+						trail_items.append(f"- /{t['route']}")
+				if trail_items:
+					parts.append(
+						"## Recent Navigation (workflow context)\n"
+						"Pages the user visited recently (oldest to newest):\n" +
+						"\n".join(trail_items)
+					)
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"Trail parse failed: {e}")
+
+	if not parts:
+		return None
+
+	return "\n\n".join(parts)
 
 
 def _build_doctype_context(doctype_names):

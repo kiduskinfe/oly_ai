@@ -386,9 +386,19 @@ oly_ai.Panel = class {
     this.setup_events();
     this._setup_streaming();
 
+    // Context indicator (inserted after header row 2, before body)
+    this._$context_bar = $('<div class="oly-ai-context-bar" style="display:none;padding:4px 12px 4px;flex-shrink:0;"></div>');
+    this.$container.find('.oly-ai-header-row2').after(this._$context_bar);
+    this._current_page_ctx = {};
+
     // Hide panel widget on the full-page /app/ask-ai to avoid overlap
     this._check_ask_ai_page();
-    $(document).on('page-change.oly_ai', function () { me._check_ask_ai_page(); });
+    $(document).on('page-change.oly_ai', function () {
+      me._check_ask_ai_page();
+      me._update_context_bar();
+    });
+    // Initial context bar update
+    setTimeout(function () { me._update_context_bar(); }, 600);
 
     $(document).on('keydown.oly_ai_shortcut', function (e) {
       if ((e.ctrlKey || e.metaKey) && e.key === '/') {
@@ -415,6 +425,35 @@ oly_ai.Panel = class {
       if (this.is_open) this.change_bubble();
     } else {
       this.$app.show();
+    }
+  }
+
+  // ── Context Bar — shows what page/document the AI is aware of ──
+  _update_context_bar() {
+    var ctx = oly_ai.get_page_context();
+    this._current_page_ctx = ctx;
+    var $bar = this._$context_bar;
+    if (!$bar) return;
+
+    if (ctx.doctype && ctx.docname) {
+      var label = frappe.utils.escape_html(ctx.doctype) + ': ' + frappe.utils.escape_html(ctx.docname);
+      $bar.html(
+        '<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;background:var(--control-bg);border-radius:8px;border:1px solid var(--border-color);">' +
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="' + oly_ai.brand_color() + '" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>' +
+          '<span style="font-size:0.6875rem;color:var(--text-color);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + label + '</span>' +
+          '<span style="font-size:0.6rem;color:var(--text-muted);margin-left:auto;white-space:nowrap;">' + __('AI sees this') + '</span>' +
+        '</div>'
+      ).show();
+    } else if (ctx.list_doctype) {
+      $bar.html(
+        '<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;background:var(--control-bg);border-radius:8px;border:1px solid var(--border-color);">' +
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="' + oly_ai.brand_color() + '" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>' +
+          '<span style="font-size:0.6875rem;color:var(--text-color);font-weight:500;">' + __('Browsing') + ' ' + frappe.utils.escape_html(ctx.list_doctype) + ' ' + __('list') + '</span>' +
+          '<span style="font-size:0.6rem;color:var(--text-muted);margin-left:auto;">' + __('AI aware') + '</span>' +
+        '</div>'
+      ).show();
+    } else {
+      $bar.hide();
     }
   }
 
@@ -1025,12 +1064,34 @@ oly_ai.Panel = class {
 
   // ── Welcome ──
   show_welcome() {
-    var chips = [
-      __("How do I create a Sales Order?"),
-      __("What is our leave policy?"),
-      __("Explain the purchase workflow"),
-      __("How to submit a timesheet?"),
-    ];
+    // Smart chips — adapt to current page context
+    var ctx = oly_ai.get_page_context();
+    var chips;
+    if (ctx.doctype && ctx.docname) {
+      var dt = ctx.doctype;
+      var dn = ctx.docname;
+      chips = [
+        __('Summarize this {0}', [dt]),
+        __('What actions should I take on this?'),
+        __('Show me related documents'),
+        __('Any issues or risks here?'),
+      ];
+    } else if (ctx.list_doctype) {
+      var ldt = ctx.list_doctype;
+      chips = [
+        __('How do I create a new {0}?', [ldt]),
+        __('What fields does {0} have?', [ldt]),
+        __('Show me the workflow for {0}', [ldt]),
+        __('What reports are available?'),
+      ];
+    } else {
+      chips = [
+        __("How do I create a Sales Order?"),
+        __("What is our leave policy?"),
+        __("Explain the purchase workflow"),
+        __("How to submit a timesheet?"),
+      ];
+    }
     this.$body.html(
       '<div class="oly-ai-welcome" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:24px 16px;text-align:center;">' +
         '<div style="width:52px;height:52px;border-radius:50%;background:' + oly_ai.brand_gradient() + ';display:flex;align-items:center;justify-content:center;margin-bottom:16px;color:white;">' +
@@ -1219,9 +1280,17 @@ oly_ai.Panel = class {
       );
       me._scroll();
 
+      // Gather page context for AI awareness
+      var page_ctx = oly_ai.get_page_context();
+      var trail = oly_ai._page_trail || [];
+
       // Try streaming first
       frappe.xcall('oly_ai.api.stream.send_message_stream', {
-        session_name: sid, message: q, model: sel_model, mode: me.current_mode
+        session_name: sid, message: q, model: sel_model, mode: me.current_mode,
+        page_doctype: page_ctx.doctype || null,
+        page_docname: page_ctx.docname || null,
+        list_doctype: page_ctx.list_doctype || null,
+        page_trail: trail.length ? JSON.stringify(trail) : null
       }).then(function (r) {
         me._stream_task = r.task_id;
         me._stream_buffer = '';
@@ -1231,7 +1300,11 @@ oly_ai.Panel = class {
         // Sync fallback
         frappe.call({
           method: 'oly_ai.api.chat.send_message',
-          args: { session_name: sid, message: q, model: sel_model, mode: me.current_mode },
+          args: { session_name: sid, message: q, model: sel_model, mode: me.current_mode,
+            page_doctype: page_ctx.doctype || null,
+            page_docname: page_ctx.docname || null,
+            list_doctype: page_ctx.list_doctype || null,
+            page_trail: trail.length ? JSON.stringify(trail) : null },
           callback: function (r) {
             if (me._active_request_id !== request_id) return;
             try {
@@ -1764,11 +1837,43 @@ oly_ai.Panel = class {
   }
 };
 
+// ─── Page Context Detection ──────────────────────────────────
+oly_ai.get_page_context = function () {
+  var ctx = { doctype: null, docname: null, list_doctype: null, route: frappe.get_route_str() || '' };
+  // Form view — cur_frm is set when user is on a document form
+  if (typeof cur_frm !== 'undefined' && cur_frm && cur_frm.doctype && cur_frm.docname && !cur_frm.is_new()) {
+    ctx.doctype = cur_frm.doctype;
+    ctx.docname = cur_frm.docname;
+  }
+  // List view — detect when browsing a DocType list
+  if (!ctx.doctype && typeof cur_list !== 'undefined' && cur_list && cur_list.doctype) {
+    ctx.list_doctype = cur_list.doctype;
+  }
+  return ctx;
+};
+
+// ─── Breadcrumb Tracker — last 5 pages for workflow context ──
+oly_ai._page_trail = [];
+oly_ai._track_page = function () {
+  var ctx = oly_ai.get_page_context();
+  var entry = { route: ctx.route, doctype: ctx.doctype, docname: ctx.docname, list_doctype: ctx.list_doctype, ts: Date.now() };
+  var trail = oly_ai._page_trail;
+  // Don't duplicate consecutive visits to same page
+  if (trail.length && trail[trail.length - 1].route === entry.route) return;
+  trail.push(entry);
+  if (trail.length > 5) trail.shift();
+};
+
+$(document).on('page-change.oly_ai_trail', function () {
+  setTimeout(function () { oly_ai._track_page(); }, 500);
+});
+
 // ─── Initialize ──────────────────────────────────────────────
 $(function () {
   if (frappe.boot && frappe.boot.user) {
     setTimeout(function () {
       oly_ai.panel = new oly_ai.Panel();
+      oly_ai._track_page();
     }, 300);
   }
 });

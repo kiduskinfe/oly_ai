@@ -16,7 +16,8 @@ from oly_ai.core.utils import is_model_unavailable_error, get_fallback_model
 
 
 @frappe.whitelist()
-def send_message_stream(session_name, message, model=None, mode=None, file_urls=None):
+def send_message_stream(session_name, message, model=None, mode=None, file_urls=None,
+						  page_doctype=None, page_docname=None, list_doctype=None, page_trail=None):
 	"""Send a message and stream the response via realtime events.
 
 	Instead of waiting for the full response, this returns immediately with a task_id.
@@ -90,6 +91,10 @@ def send_message_stream(session_name, message, model=None, mode=None, file_urls=
 		mode=mode,
 		user=user,
 		file_urls=file_urls,
+		page_doctype=page_doctype,
+		page_docname=page_docname,
+		list_doctype=list_doctype,
+		page_trail=page_trail,
 	)
 
 	return {
@@ -99,7 +104,8 @@ def send_message_stream(session_name, message, model=None, mode=None, file_urls=
 	}
 
 
-def _process_stream(task_id, session_name, message, model, mode, user, file_urls=None):
+def _process_stream(task_id, session_name, message, model, mode, user, file_urls=None,
+					page_doctype=None, page_docname=None, list_doctype=None, page_trail=None):
 	"""Background job: stream LLM response via realtime events."""
 	import os
 	import base64
@@ -190,6 +196,18 @@ def _process_stream(task_id, session_name, message, model, mode, user, file_urls
 					})
 		except Exception as e:
 			frappe.logger("oly_ai").debug(f"Mention context failed: {e}")
+
+		# Page context — inject current document data if user is viewing a specific document
+		try:
+			from oly_ai.api.chat import _build_page_context
+			page_ctx = _build_page_context(page_doctype, page_docname, list_doctype, page_trail)
+			if page_ctx:
+				llm_messages.append({
+					"role": "system",
+					"content": page_ctx,
+				})
+		except Exception as e:
+			frappe.logger("oly_ai").debug(f"Page context failed: {e}")
 
 		# Handle file uploads for vision
 		if file_urls:
