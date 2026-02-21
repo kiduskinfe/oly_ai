@@ -36,12 +36,9 @@ brain: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="curr
 };
 oly_ai.ICON = ICON;
 
-// ─── AI Avatar Helper (theme-aware) ─────────────────────────────────
+// ─── AI Avatar Helper ────────────────────────────────────────────────
 function _ai_avatar_html() {
-  var dark = document.documentElement.getAttribute('data-theme') === 'dark';
-  var bg = dark ? '#e8e8e8' : 'var(--primary-color)';
-  var clr = dark ? '#1a1a1a' : 'white';
-  return '<div class="oly-ai-msg-avatar oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:' + bg + ';color:' + clr + ';">' + ICON.sparkles_avatar + '</div>';
+  return '<div class="oly-ai-msg-avatar oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + ICON.sparkles_avatar + '</div>';
 }
 
 // ─── Brand Colors (from AI Settings) ───────────────────────────────────
@@ -1265,18 +1262,15 @@ oly_ai.Panel = class {
     if (this._safety_timer) { clearTimeout(this._safety_timer); this._safety_timer = null; }
     var me = this;
     var $btn = this.$panel.find('#panel-send-btn');
-    var is_dark = document.documentElement.getAttribute('data-theme') === 'dark';
     if (is_sending) {
       $btn.addClass('oly-ai-stop-btn').removeClass('oly-ai-send-btn').html(ICON.stop)
-        .css({ background: is_dark ? 'white' : 'var(--primary-color)', 'border-radius': '50%' });
-      if (is_dark) $btn.find('svg rect').attr('fill', '#1a1a1a');
+        .css({ background: '', 'border-radius': '50%' });
       $btn.off('click').on('click', function () { me._stop_generation(); });
       this.$input.attr('placeholder', __("Type your next message..."));
       this._safety_timer = setTimeout(function () { if (me.sending) me._set_sending(false); }, 120000);
     } else {
       $btn.addClass('oly-ai-send-btn').removeClass('oly-ai-stop-btn').html(ICON.send)
-        .css({ background: is_dark ? 'white' : 'var(--primary-color)', 'border-radius': '50%' });
-      if (is_dark) $btn.find('svg').css('fill', '#1a1a1a');
+        .css({ background: '', 'border-radius': '50%' });
       $btn.off('click').on('click', function () { me.send(); });
       var ph = { ask: __("Ask anything..."), research: __("Research in depth..."), agent: __("Describe what you need..."), execute: __("What action to execute?") };
       this.$input.attr('placeholder', ph[this.current_mode] || ph.ask);

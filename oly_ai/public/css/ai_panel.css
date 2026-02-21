@@ -268,12 +268,15 @@
   width: 2rem;
   min-width: 2rem;
   border-radius: 50%;
-  background: var(--red);
+  background: var(--primary-color);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .oly-ai-stop-btn svg {
+  fill: white;
+}
+.oly-ai-stop-btn svg rect {
   fill: white;
 }
 
@@ -620,11 +623,11 @@
 }
 .oly-ai-msg-avatar svg { width: 14px; height: 14px; }
 .oly-ai-msg-avatar-ai {
-  background: rgba(36, 144, 239, 0.08);
-  border: 1px solid rgba(36, 144, 239, 0.12);
+  background: var(--primary-color);
+  color: white;
 }
 .oly-ai-msg-avatar-ai svg {
-  fill: var(--primary-color);
+  fill: currentColor;
 }
 [data-theme="dark"] .oly-ai-msg-avatar-ai {
   background: #e8e8e8 !important;
@@ -995,7 +998,7 @@
    ──────────────────────────────────────────── */
 [data-theme="dark"] .oly-ai-msg-avatar-ai {
   background: #e8e8e8 !important;
-  border-color: #ccc !important;
+  color: #1a1a1a !important;
 }
 [data-theme="dark"] .oly-ai-msg-avatar-ai svg {
   fill: #1a1a1a !important;
@@ -1009,6 +1012,7 @@
 [data-theme="dark"] .oly-ai-stop-btn {
   background: white !important;
 }
+[data-theme="dark"] .oly-ai-stop-btn svg,
 [data-theme="dark"] .oly-ai-stop-btn svg rect {
   fill: #1a1a1a !important;
 }
