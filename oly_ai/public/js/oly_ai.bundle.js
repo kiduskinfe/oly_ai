@@ -1347,10 +1347,11 @@ oly_ai.Panel = class {
       me._user_msg(q);
 
       var lid = 'oly-t-' + Date.now();
+      // Show avatar + bare typing dots (no bubble) while waiting
       me.$body.append(
         '<div class="oly-ai-msg oly-ai-msg-ai" id="' + lid + '" style="display:flex;gap:8px;margin-bottom:12px;align-items:flex-start;">' +
         _ai_avatar_html() +
-        '<div class="oly-ai-msg-content" style="flex:1;min-width:0;background:var(--control-bg);border-radius:4px 18px 18px 18px;padding:10px 14px;font-size:0.8125rem;line-height:1.6;"><div class="oly-ai-typing"><span></span><span></span><span></span></div></div></div>'
+        '<div class="oly-ai-msg-content" style="flex:1;min-width:0;"><div class="oly-ai-typing"><span></span><span></span><span></span></div></div></div>'
       );
       me._scroll();
 
@@ -1368,7 +1369,7 @@ oly_ai.Panel = class {
       }).then(function (r) {
         me._stream_task = r.task_id;
         me._stream_buffer = '';
-        // Keep typing dots visible inside the streaming span — they'll be replaced on first chunk
+        // Keep typing dots visible — add bubble styling only when first chunk replaces them
         $('#' + lid + ' .oly-ai-msg-content').html('<span id="panel-stream-' + r.task_id + '" class="ai-streaming-cursor"><div class="oly-ai-typing"><span></span><span></span><span></span></div></span>');
         me._scroll();
       }).catch(function () {
@@ -1432,7 +1433,12 @@ oly_ai.Panel = class {
       me._stream_buffer = (me._stream_buffer || "") + data.chunk;
       var $el = $("#panel-stream-" + data.task_id);
       if ($el.length) {
-        $el.find('.oly-ai-typing').remove();
+        // On first chunk, add bubble styling to the content wrapper
+        var $content = $el.closest('.oly-ai-msg-content');
+        if (!$content.data('has-bubble')) {
+          $content.css({ background: 'var(--control-bg)', 'border-radius': '4px 18px 18px 18px', padding: '10px 14px', 'font-size': '0.8125rem', 'line-height': '1.6' });
+          $content.data('has-bubble', true);
+        }
         $el.html(oly_ai.render_markdown(me._stream_buffer));
         me._scroll();
       }
@@ -1444,7 +1450,11 @@ oly_ai.Panel = class {
         $el.removeClass("ai-streaming-cursor");
         var content = data.content || me._stream_buffer || "";
         var meta = [data.model, data.cost ? '$' + data.cost.toFixed(4) : ''].filter(Boolean).join(' · ');
-        $el.closest('.oly-ai-msg-content').html(
+        var $content = $el.closest('.oly-ai-msg-content');
+        if (!$content.data('has-bubble')) {
+          $content.css({ background: 'var(--control-bg)', 'border-radius': '4px 18px 18px 18px', padding: '10px 14px', 'font-size': '0.8125rem', 'line-height': '1.6' });
+        }
+        $content.html(
           oly_ai.render_markdown(content) +
           '<div class="oly-ai-msg-footer" style="display:flex;align-items:center;gap:8px;margin-top:6px;padding-top:4px;border-top:1px solid var(--border-color);">' +
             '<span class="oly-ai-copy-btn" style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-muted);font-size:0.75rem;" data-text="' + frappe.utils.escape_html(content) + '">' + ICON.copy + ' Copy</span>' +
@@ -1630,7 +1640,7 @@ oly_ai.Panel = class {
           if (mi && mi >= idx) $el.remove();
         });
         me._user_msg(values.content.trim());
-        me.$body.append('<div class="oly-ai-loading oly-ai-msg oly-ai-msg-ai" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;">' + _ai_avatar_html() + '<div class="oly-ai-msg-content" style="flex:1;min-width:0;background:var(--control-bg);border-radius:4px 18px 18px 18px;padding:10px 14px;"><div class="oly-ai-typing"><span></span><span></span><span></span></div></div></div>');
+        me.$body.append('<div class="oly-ai-loading" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;">' + _ai_avatar_html() + '<div class="oly-ai-typing"><span></span><span></span><span></span></div></div>');
         me._scroll();
         frappe.call({
           method: "oly_ai.api.chat.edit_message",
@@ -1663,7 +1673,7 @@ oly_ai.Panel = class {
       var mi = parseInt($el.attr('data-msg-idx'));
       if (mi && mi >= idx) $el.remove();
     });
-    me.$body.append('<div class="oly-ai-loading oly-ai-msg oly-ai-msg-ai" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;">' + _ai_avatar_html() + '<div class="oly-ai-msg-content" style="flex:1;min-width:0;background:var(--control-bg);border-radius:4px 18px 18px 18px;padding:10px 14px;"><div class="oly-ai-typing"><span></span><span></span><span></span></div></div></div>');
+    me.$body.append('<div class="oly-ai-loading" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;">' + _ai_avatar_html() + '<div class="oly-ai-typing"><span></span><span></span><span></span></div></div>');
     me._scroll();
     frappe.call({
       method: "oly_ai.api.chat.regenerate_response",
