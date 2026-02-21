@@ -38,7 +38,10 @@ oly_ai.ICON = ICON;
 
 // ─── AI Avatar Helper ────────────────────────────────────────────────
 function _ai_avatar_html() {
-  return '<div class="oly-ai-msg-avatar oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--primary-color);color:white;">' + ICON.sparkles_avatar + '</div>';
+  var dark = (document.documentElement.getAttribute('data-theme') === 'dark' || document.documentElement.getAttribute('data-theme-mode') === 'dark');
+  var bg = dark ? 'white' : 'var(--primary-color)';
+  var clr = dark ? 'black' : 'white';
+  return '<div class="oly-ai-msg-avatar oly-ai-msg-avatar-ai" style="width:26px;height:26px;min-width:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:' + bg + ';color:' + clr + ';">' + ICON.sparkles_avatar + '</div>';
 }
 
 // ─── Brand Colors (from AI Settings) ───────────────────────────────────
