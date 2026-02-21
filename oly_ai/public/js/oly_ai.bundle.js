@@ -1368,7 +1368,8 @@ oly_ai.Panel = class {
       }).then(function (r) {
         me._stream_task = r.task_id;
         me._stream_buffer = '';
-        $('#' + lid + ' .oly-ai-msg-content').html('<span id="panel-stream-' + r.task_id + '" class="ai-streaming-cursor"></span>');
+        // Keep typing dots visible inside the streaming span — they'll be replaced on first chunk
+        $('#' + lid + ' .oly-ai-msg-content').html('<span id="panel-stream-' + r.task_id + '" class="ai-streaming-cursor"><div class="oly-ai-typing"><span></span><span></span><span></span></div></span>');
         me._scroll();
       }).catch(function () {
         // Sync fallback
@@ -1430,7 +1431,11 @@ oly_ai.Panel = class {
       if (!data || !me._stream_task || data.task_id !== me._stream_task) return;
       me._stream_buffer = (me._stream_buffer || "") + data.chunk;
       var $el = $("#panel-stream-" + data.task_id);
-      if ($el.length) { $el.html(oly_ai.render_markdown(me._stream_buffer)); me._scroll(); }
+      if ($el.length) {
+        $el.find('.oly-ai-typing').remove();
+        $el.html(oly_ai.render_markdown(me._stream_buffer));
+        me._scroll();
+      }
     });
     frappe.realtime.on("ai_done", function (data) {
       if (!data || !me._stream_task || data.task_id !== me._stream_task) return;
